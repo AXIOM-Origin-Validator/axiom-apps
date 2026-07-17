@@ -1,0 +1,1857 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AXIOM Wallet (web)</title>
+<style>
+  :root { --bg:#0b0e14; --card:#141925; --line:#222a3a; --fg:#e6edf3; --dim:#8b98ad; --acc:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+  * { box-sizing:border-box; }
+  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",ui-sans-serif,sans-serif; margin:0; background:var(--bg); color:var(--fg); overflow-x:hidden; -webkit-text-size-adjust:100%; }
+  .wrap { max-width:560px; margin:0 auto; padding:1.5rem 1rem 4rem; }
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.2rem; }
+  .brand { font-weight:700; letter-spacing:.5px; font-size:1.1rem; }
+  .chip { font:11px ui-monospace,monospace; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:.2rem .6rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.2rem; margin-bottom:1rem; }
+  h2 { font-size:.95rem; margin:.1rem 0 .9rem; font-weight:600; }
+  label { display:block; font-size:.8rem; color:var(--dim); margin:.6rem 0 .25rem; }
+  input, select, textarea { width:100%; font:inherit; font-size:16px; background:#0e1320; color:var(--fg); border:1px solid var(--line); border-radius:9px; padding:.6rem .7rem; }
+  .suffix-row { display:flex; align-items:center; border:1px solid var(--line); border-radius:9px; background:#0e1320; overflow:hidden; }
+  .suffix-row input { border:none; border-radius:0; background:transparent; }
+  .suffix-row .suffix { color:var(--dim); padding:0 .7rem; white-space:nowrap; font:12px ui-monospace,monospace; }
+  code { font:12px ui-monospace,monospace; color:var(--acc); background:#0e1320; padding:.05rem .3rem; border-radius:5px; }
+  button { font:inherit; font-weight:600; cursor:pointer; background:var(--acc); color:#06223f; border:none; border-radius:9px; padding:.65rem 1rem;
+           transition:filter .12s ease, transform .05s ease, background .12s ease, border-color .12s ease, box-shadow .12s ease; }
+  button:hover:not(:disabled) { filter:brightness(1.1); }
+  button:active:not(:disabled) { transform:translateY(1px) scale(.98); filter:brightness(.88); box-shadow:inset 0 2px 6px rgba(0,0,0,.25); }
+  button:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button.ghost:hover:not(:disabled) { border-color:var(--acc); color:var(--acc); background:rgba(255,255,255,.05); filter:none; }
+  button.ghost:active:not(:disabled) { background:rgba(255,255,255,.10); filter:none; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  /* In-flight lock — grey out concurrent-op triggers while a protocol op runs
+     (navigation, copy, lock/forget, read-only refresh stay usable). */
+  #main.busy #ov-claim, #main.busy #s-send, #main.busy #ov-heal,
+  #main.busy #r-refresh, #main.busy #r-register, #main.busy #r-test,
+  #main.busy #r-cheques button {
+    opacity:.45; pointer-events:none; filter:grayscale(.4);
+  }
+  /* Core-divergence lock — disable every value-moving op while this build's
+     Core differs from the live worldline Core (Same-Core invariant). */
+  #main.corelock #ov-claim, #main.corelock #s-send, #main.corelock #ov-heal,
+  #main.corelock #r-cheques button {
+    opacity:.45; pointer-events:none; filter:grayscale(.4);
+  }
+  /* YPX-020 hibernation lock — Core hard-rejects every tx except HAL complete
+     / re-anchor while hibernating, so disable Send / Redeem / Claim / Heal +
+     the re-anchor (only "Finish recovery" stays live). SDK defence-in-depth. */
+  #main.hibernating #ov-claim, #main.hibernating #s-send, #main.hibernating #ov-heal,
+  #main.hibernating #ov-hal-reanchor, #main.hibernating #r-cheques button {
+    opacity:.45; pointer-events:none; filter:grayscale(.4);
+  }
+  .hib-banner { margin-top:.9rem; padding:.7rem .8rem; border:1px solid #5a4; border-radius:10px;
+    background:rgba(90,160,90,.10); }
+  .hib-banner > b { color:#9d6; }
+  .row { display:flex; gap:.6rem; align-items:center; }
+  .row > * { flex:1; }
+  .balance { font-size:2.2rem; font-weight:700; letter-spacing:-.5px; }
+  .balance small { font-size:.9rem; color:var(--dim); font-weight:500; }
+  .addr { font:12px ui-monospace,monospace; color:var(--fg); background:#0e1320; border:1px solid var(--line); border-radius:9px; padding:.55rem .7rem; word-break:break-all; cursor:pointer; }
+  .addr:hover { border-color:var(--acc); }
+  .addr-row { display:flex; gap:.5rem; align-items:center; }
+  .addr-row .addr { flex:1; }
+  .copy { flex:0 0 auto; background:transparent; border:1px solid var(--line); color:var(--dim); border-radius:8px; padding:.34rem .55rem; cursor:pointer; font-size:.85rem; line-height:1; }
+  .copy:hover { color:var(--acc); border-color:var(--acc); }
+  .badge { font-size:.62rem; color:var(--warn); border:1px solid var(--line); border-radius:999px; padding:.12rem .55rem; margin-left:.45rem; font-weight:500; vertical-align:middle; }
+  .nav { display:flex; gap:.3rem; margin-bottom:1rem; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.3rem; }
+  .nav .tab { flex:1; background:transparent; color:var(--dim); border:none; border-radius:9px; padding:.55rem; font-weight:600; }
+  .nav .tab.active { background:#1c2740; color:var(--fg); }
+  .nav .tab:hover:not(.active) { color:var(--fg); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:.5rem .9rem; margin-top:.4rem; }
+  .grid div span { color:var(--dim); font-size:.75rem; display:block; }
+  .grid div b { font:12px ui-monospace,monospace; font-weight:600; }
+  .tier { display:flex; align-items:center; gap:.6rem; padding:.45rem 0; border-bottom:1px solid var(--line); font:11px ui-monospace,monospace; }
+  .tier:last-child { border-bottom:none; }
+  .tier .t { color:var(--dim); flex:0 0 64px; }            /* fixed label column → addresses align */
+  .tier .a { color:var(--fg); flex:1; min-width:0; word-break:break-all; text-align:left; }
+  .tier .copy { flex:0 0 auto; }
+  /* Expandable history row — summary looks like a .tier; opens a fee breakdown. */
+  details.hist { display:block; padding:0; }
+  details.hist summary { display:flex; align-items:center; gap:.6rem; padding:.45rem 0; cursor:pointer; list-style:none; }
+  details.hist summary::-webkit-details-marker { display:none; }
+  details.hist summary::after { content:'▸'; color:var(--dim); margin-left:auto; }
+  details.hist[open] summary::after { content:'▾'; }
+  .feebd { border-top:1px dashed var(--line); margin:0 0 .3rem; padding:.3rem 0 .4rem; }
+  .frow { display:flex; justify-content:space-between; gap:1rem; padding:.12rem 0; color:var(--dim); }
+  .frow.tot { color:var(--fg); font-weight:600; margin-bottom:.15rem; }
+  .muted { color:var(--dim); font-size:.8rem; }
+  .err { color:var(--err); } .ok { color:var(--ok); } .warn { color:var(--warn); }
+  .hidden { display:none; }
+  details summary { cursor:pointer; color:var(--dim); font-size:.8rem; }
+  .toast { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:#1b2233; border:1px solid var(--line); border-radius:10px; padding:.6rem 1rem; font-size:.85rem; opacity:0; transition:opacity .2s; }
+  .toast.show { opacity:1; }
+@keyframes indet { 0%{margin-left:-30%} 100%{margin-left:100%} }
+@keyframes spin { to { transform:rotate(360deg) } }
+.spin { width:14px; height:14px; flex:0 0 auto; border-radius:50%; border:2px solid rgba(78,161,255,.3); border-top-color:#4ea1ff; animation:spin .7s linear infinite; }
+  /* 乖乖 (椰子口味) — the axiom-denomination canary, shown as an easter egg
+     (7 taps on the build chip). If the converter lib is ever unlinked from the
+     wasm the art is empty and the overlay shows a regression notice instead. */
+  .egg { position:fixed; inset:0; z-index:60; display:none; flex-direction:column; align-items:center; justify-content:center; gap:.7rem; background:rgba(6,9,16,.95); cursor:pointer; padding:1rem; }
+  .egg pre { margin:0; color:var(--ok); font:7px/1.05 ui-monospace,monospace; white-space:pre; overflow:auto; max-width:100%; max-height:78vh; }
+  .egg .flavor { color:var(--fg); font-size:.9rem; letter-spacing:.06em; }
+  .egg .hint { color:var(--dim); font-size:.7rem; }
+  /* ── Mobile / narrow screens (phones) ─ desktop layout untouched ─── */
+  @media (max-width:480px) {
+    .wrap { padding:1rem .8rem 4rem; }
+    .card { padding:1rem; }
+    .balance { font-size:1.8rem; }
+    .row { flex-wrap:wrap; }           /* multi-item rows stack instead of overflow */
+    .addr-row { flex-wrap:wrap; }
+    button { padding:.72rem 1rem; }    /* taller tap targets */
+    .nav .tab { padding:.6rem .35rem; font-size:.9rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="brand">◆ AXIOM</span>
+    <span class="chip" id="coreid">Core: …</span>
+  </header>
+
+  <div id="msg" class="card" style="display:none"></div>
+  <!-- Core divergence hard-lock (Same-Core invariant). Shown when this build's
+       baked CoreID differs from the live worldline.json CoreID — value ops are
+       disabled and the user is told to download the current build from GitHub.
+       Best-effort: never shown if worldline.json is unreachable (offline). -->
+  <div id="corelock" class="card" style="display:none;border-color:var(--err)">
+    <div style="display:flex;align-items:center;gap:.45rem;font-weight:700;color:var(--err)">
+      <span>⚠</span><span>Outdated Core — transactions disabled</span>
+    </div>
+    <p class="muted" id="corelock-msg" style="margin:.5rem 0 .7rem"></p>
+    <a id="corelock-dl" href="https://github.com/AXIOM-Origin-Validator/axiom-dist/releases/latest" target="_blank" rel="noopener"
+       style="display:inline-block;text-decoration:none"><button>Download the latest build →</button></a>
+    <p class="muted" style="margin:.6rem 0 0;font-size:.78rem">Why: a wallet on a diverged Core can't transact safely (Same-Core invariant — White Paper / Yellow Paper §16.8.3, §23.10). Receiving the latest build re-aligns you with the network.</p>
+  </div>
+  <div id="prog" class="card" style="display:none">
+    <div id="prog-title" style="font-weight:700;font-size:1rem;display:flex;align-items:center;gap:.5rem">
+      <span class="spin" aria-hidden="true"></span><span id="prog-title-txt">Working…</span>
+    </div>
+    <div id="prog-txt" style="font:12px ui-monospace,monospace;color:var(--dim);margin:.25rem 0 .6rem">starting…</div>
+    <div style="height:7px;background:rgba(255,255,255,.12);border-radius:4px;overflow:hidden">
+      <div id="prog-bar" style="height:100%;width:35%;background:linear-gradient(90deg,#4ea1ff,#7ec6ff);border-radius:4px;animation:indet 1.1s ease-in-out infinite"></div>
+    </div>
+  </div>
+  <div id="boot" class="card"><span class="muted">Loading Core…</span></div>
+
+  <!-- Onboarding (dev test accounts only, for now) -->
+  <div id="onboard" class="card hidden">
+    <h2>Create a developer test wallet</h2>
+    <p class="muted" style="margin:.1rem 0 .9rem">This build creates <b>developer test accounts</b> only — the <code>@axiom.internal</code> dev class, on the isolated dev-AXC pool. Public accounts unlock once the validator network is wired for real-email delivery.</p>
+    <label>Name</label><input id="o-name" value="my-wallet" />
+    <label>Dev email</label>
+    <div class="suffix-row"><input id="o-email-local" placeholder="you" /><span class="suffix">@axiom.internal</span></div>
+    <label>Wallet key (password)</label><input id="o-key" type="password" placeholder="strong passphrase" />
+    <label>Confirm wallet key</label><input id="o-key2" type="password" placeholder="re-enter passphrase" />
+    <label>Developer passcode</label><input id="o-dev" type="password" placeholder="passcode to create a test account" />
+    <div style="margin-top:1rem" class="row">
+      <button id="o-create">Create wallet</button>
+    </div>
+    <p class="muted" style="margin-top:.8rem">The wallet key signs your transactions and is <b>never stored</b>. Your wallet is <b>encrypted at rest</b> with this key (PBKDF2 + XSalsa20-Poly1305) before it touches this browser's storage — so the key is also what decrypts it. If you lose or mistype it, the wallet <b>cannot be recovered</b>.</p>
+
+    <div style="margin:1.1rem 0 .3rem;border-top:1px solid #2a2f3a;padding-top:.9rem"></div>
+    <label>Or import a wallet backup</label>
+    <p class="muted" style="margin:.1rem 0 .5rem">Bring a wallet over from the desktop wallet or another browser. On the source, export an <b>encrypted backup</b> (Mac: <b>Wallets → Export</b> → a <code>wallet.axpw</code> file), choose it here, and reuse the <b>Name</b> + <b>Wallet key</b> fields above — the key must be the one the wallet was exported with. The backup is decrypted with that key and re-encrypted at rest in this browser under it (dev passcode + confirm-key don't apply to import).</p>
+    <input type="file" id="o-import-file" accept=".axpw,.axiom,application/octet-stream" />
+    <div style="margin-top:.6rem" class="row"><button id="o-import" class="ghost">Import wallet</button></div>
+  </div>
+
+  <!-- Unlock -->
+  <div id="unlock" class="card hidden">
+    <h2>Welcome back</h2>
+    <label>Wallet</label>
+    <select id="u-wallet"></select>
+    <label>Wallet key (password)</label>
+    <input id="u-key" type="password" placeholder="your passphrase" />
+    <div style="margin-top:.8rem" class="row">
+      <button id="u-open">Open</button>
+      <button id="u-forget" class="ghost">Forget</button>
+    </div>
+    <div style="margin-top:.6rem"><button id="u-new" class="ghost" style="width:100%">＋ Create a different wallet</button></div>
+  </div>
+
+  <!-- Main app (wallet open) -->
+  <div id="main" class="hidden">
+    <!-- Persistent wallet summary — always visible, every tab. -->
+    <div class="card">
+      <h2 id="ov-name">Overview</h2>
+      <div class="balance"><span id="ov-bal">0</span> <small>AXC</small></div>
+      <div class="muted" id="ov-bal-ld" style="margin-top:-.25rem;font-size:.95rem"></div>
+      <label>Your address (Standard · k=3)</label>
+      <div class="addr-row">
+        <span class="addr" id="ov-addr">…</span>
+        <button class="copy" data-copy-target="ov-addr" title="Copy address">📋</button>
+      </div>
+      <div class="grid" style="margin-top:.9rem">
+        <div><span>Health</span><b id="ov-health">—</b></div>
+        <div><span>Scars</span><b id="ov-scar">—</b></div>
+        <div><span>Wallet seq</span><b id="ov-seq">—</b></div>
+        <div><span>Pending cheques</span><b id="ov-pending">—</b></div>
+      </div>
+      <details style="margin-top:.9rem"><summary>State id</summary>
+        <div class="addr" id="ov-state" style="margin-top:.4rem"></div></details>
+      <!-- YPX-020: persistent hibernation banner. While hibernating, Core
+           hard-rejects every tx except HAL complete / re-anchor, so Send /
+           Redeem / Claim / Heal are all disabled (see #main.hibernating). -->
+      <div id="ov-hib-banner" class="hib-banner" style="display:none">
+        <b>🌙 Wallet hibernating</b>
+        <div class="muted" id="ov-hib-detail" style="margin:.35rem 0 .6rem">
+          This wallet is converging after a recovery (HAL re-anchor or a
+          recalled payment). Sends and redeems are paused until you finish
+          recovery — finishing redeems the recovery cheque and, for a
+          recalled payment, credits the recovered amount back.</div>
+        <button id="ov-hib-finish" style="width:100%">Finish recovery</button>
+        <pre id="hib-out" class="muted" style="margin:.6rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="send">Send</button>
+      <button class="tab" data-tab="receive">Receive</button>
+      <button class="tab" data-tab="history">History</button>
+      <button class="tab" data-tab="proof">Proof</button>
+    </div>
+
+    <!-- Overview tab -->
+    <div id="tab-overview">
+      <div class="card">
+        <h2>Other tier addresses</h2>
+        <div id="ov-tiers"></div>
+      </div>
+      <div class="card" id="ov-claim-card">
+        <h2>Dev funds <span class="badge">@axiom.internal</span></h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">Claim <b>1 AXC</b> from the dev-AXC pool: fund (k=3 witness round over TOT) → Nabla register → pull the cheque (TOT→FATMAMA) → CL5 redeem. Runs against the live dev env.</p>
+        <label>Env host (TOT 7400–7409 · Nabla via tunnel)</label><input id="c-host" value="axiom-dev.mooo.com" />
+        <div style="margin-top:.8rem"><button id="ov-claim" style="width:100%">Claim dev funds</button></div>
+        <pre id="c-out" class="muted" style="margin:.7rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+      <div class="card" id="ov-heal-card" style="display:none">
+        <h2>Wallet recovery <span class="badge">heal</span></h2>
+        <p class="muted" id="heal-reason" style="margin:.1rem 0 .7rem">This wallet needs healing.</p>
+        <div><button id="ov-heal" style="width:100%">Heal wallet</button></div>
+        <!-- Explicit scar-burn (de-orch: heal no longer auto-burns). Burning
+             DESTROYS the scarred value — user-confirmed, separate from heal. -->
+        <div style="margin-top:.5rem"><button id="ov-burn" class="ghost" style="width:100%; color:var(--bad,#d66)">Burn scarred links (destroys value)</button></div>
+        <pre id="heal-out" class="muted" style="margin:.7rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+      <!-- YPX-020 HAL — dead-overlap recovery. A healthy wallet whose prior
+           witnesses are unreachable can't meet S-ABR overlap; heal() does NOT
+           recover this. A HAL re-anchor is a key-proved, validator-witnessed
+           self-send Core CL2 accepts WITHOUT overlap, then hibernates the
+           wallet until you finish recovery. Manual control — runs the real
+           protocol, not a simulation. -->
+      <div class="card" id="ov-hal-card">
+        <h2>Dead-overlap recovery <span class="badge">HAL · YPX-020</span></h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">If sends keep failing with
+          insufficient witness overlap (your prior validators are offline),
+          re-anchor the wallet. This is the real HAL protocol: a key-proved
+          self-send that re-anchors without overlap, then briefly hibernates
+          the wallet. Finish recovery from the banner above once it converges.</p>
+        <div><button id="ov-hal-reanchor" class="secondary" style="width:100%">Re-anchor wallet (HAL)…</button></div>
+        <pre id="hal-out" class="muted" style="margin:.7rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+      <div class="card" id="ov-ark-card">
+        <h2>Ark address <span class="badge">offline · k=0</span></h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">A special offline wallet — charge it by sending here, then it transacts with no internet. Keep it separate from your main address.</p>
+        <div class="addr-row">
+          <span class="addr" id="ov-ark">…</span>
+          <button class="copy" data-copy-target="ov-ark" title="Copy Ark address">📋</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Send tab -->
+    <div id="tab-send" class="hidden">
+      <div class="card">
+        <h2>Send</h2>
+        <label>Recipient (wallet address or email)</label>
+        <input id="s-to" placeholder="bob@axiom  or  AXM…" />
+        <label>Amount (AXC)</label>
+        <input id="s-amt" type="number" min="0" step="any" placeholder="0.0" />
+        <label>Carrier</label>
+        <select id="s-carrier"><option value="tot">TOT (browser · required)</option></select>
+        <div style="margin-top:1rem"><button id="s-send" style="width:100%">Send</button></div>
+        <!-- YPX-022 RECALL (repurposed 2026-07-07): retract a COMPLETED but
+             UNDELIVERED payment — the most recent send from this browser,
+             once it has gone unclaimed past the protected window. Shown
+             whenever a completed send's tx is stashed; the network answers a
+             mistimed attempt with a legible too-early / too-late / already-
+             redeemed reason. A redeemed payment can never be recalled. -->
+        <div id="s-recall-box" style="display:none; margin-top:.8rem">
+          <button id="s-recall" style="width:100%">Recall a payment…</button>
+          <pre id="s-recall-out" class="muted" style="margin:.5rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+          <p class="muted" style="margin-top:.5rem">If your most recent payment never reached the
+            receiver (bounced email, dropped connection) and stays unclaimed past the protected
+            window, you can recall it. The receiver keeps priority until the recall commits — a
+            redeem that lands first wins and the payment stands. On commit the undelivered cheque
+            is permanently cancelled network-wide, the wallet briefly hibernates while the retract
+            converges, then "Finish recovery" credits the amount back.</p>
+        </div>
+        <!-- Resumable interrupted send (2026-07-08): a per-hop witness timeout
+             is the browser's patience expiring, NOT a protocol verdict — the
+             signed tx + collected sigs stay valid (no witness expiry), and a
+             response arriving after the timeout still counts. The round was
+             saved; Resume sweeps late responses and continues the SAME tx.
+             Shown while the round is still valid (the wallet hasn't moved). -->
+        <div id="s-interrupted-box" style="display:none; margin-top:.8rem">
+          <b style="font-size:13px">⏸ Interrupted send — resumable</b>
+          <div class="muted" id="s-interrupted-detail" style="margin:.35rem 0"></div>
+          <div style="display:flex; gap:.5rem">
+            <button id="s-resume" style="flex:1">Resume</button>
+            <button id="s-discard" class="secondary" style="flex:1">Discard</button>
+          </div>
+          <pre id="s-interrupted-out" class="muted" style="margin:.5rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+        </div>
+        <!-- YPX-001 §1.5.1 — scar-consent PAUSE. The validators paused this
+             payment because the money carries unverified provenance link(s)
+             (its own, or INHERITED from whoever paid you — §1.5.1a). Nothing
+             was witnessed and no funds moved. The RECEIVER was notified with a
+             6-digit passcode; they give it to you out-of-band, and that hand-off
+             IS their consent to inherit the scars. -->
+        <div id="s-scar-box" style="display:none; margin-top:.8rem">
+          <b style="font-size:13px">⏸ Payment paused — receiver consent required</b>
+          <div class="muted" id="s-scar-detail" style="margin:.35rem 0"></div>
+          <div style="display:flex; gap:.5rem; align-items:center">
+            <input id="s-scar-code" inputmode="numeric" maxlength="6" placeholder="6-digit passcode"
+                   style="flex:1; letter-spacing:.15em; text-align:center; font:14px ui-monospace,monospace" />
+            <button id="s-scar-send" style="flex:1">Complete payment</button>
+            <button id="s-scar-discard" class="secondary" style="flex:0 0 auto">Cancel</button>
+          </div>
+          <pre id="s-scar-out" class="muted" style="margin:.5rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+        </div>
+        <p class="muted" id="s-note" style="margin-top:.8rem">Builds the TX, runs CL1 in-browser, then the k=3 S-ABR witness round over TOT and registers with Nabla. Receiver-pays: you lose only the amount (fees are paid by the receiver at redeem). Needs the env host (set on the Overview "Dev funds" card).</p>
+      </div>
+    </div>
+
+    <!-- Receive tab -->
+    <div id="tab-receive" class="hidden">
+      <!-- YPX-001 §1.5.1 — INCOMING payment paused for YOUR consent. The
+           sender's money carries unverified provenance link(s); if you accept,
+           your wallet INHERITS those scars (§1.5.1a — they stay visible on
+           everything you go on to spend, until the original transaction is
+           re-registered or burned). ACCEPT by giving the sender the passcode
+           out-of-band — that hand-off IS the consent, which is why there is no
+           "accept" button that calls the network. DECLINE by doing nothing:
+           the payment simply never happens and no funds move either way. -->
+      <div class="card" id="r-consent-card" style="display:none">
+        <h2>⏸ Payment awaiting your consent</h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">
+          Someone is trying to pay you with money that has unverified history. Nothing has moved.
+          To <b>accept</b>, give the sender the passcode below — that is your consent, and your wallet
+          will inherit the marks until the original payment is cleaned up by its sender.
+          To <b>decline</b>, do nothing.
+        </p>
+        <div id="r-consent-list"></div>
+      </div>
+
+      <!-- Pull first — the primary receive action. -->
+      <div class="card">
+        <h2>Pending cheques</h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">Someone paid you a cheque? Pull it in, then redeem. Your address is on the Overview.</p>
+        <!-- KI#34 WI2/WI5 — per-wallet incoming-payment check mode. Which Nablas
+             verify a cheque you redeem is your choice; a double-spend is always
+             caught with no harm to the economy, only this wallet could briefly
+             accept a bad cheque. -->
+        <label class="muted" style="display:block; margin:.1rem 0 .2rem; font-size:11px">Incoming payment checks</label>
+        <select id="r-check-mode" style="width:100%; margin-bottom:.5rem">
+          <option value="default">Default — sender's suggestion + 2 random (fast)</option>
+          <option value="secure">Secure — your own nodes only, ignore sender (cautious)</option>
+          <option value="random">Random — 3 random nodes</option>
+        </select>
+        <div id="r-check-mode-note" class="muted" style="font-size:10px; margin:-.2rem 0 .6rem"></div>
+        <div style="margin-top:.2rem"><button id="r-refresh" style="width:100%">Check for cheques</button></div>
+        <div id="r-cheques" class="muted" style="margin-top:.7rem">None yet.</div>
+      </div>
+      <!-- Dev mail connection — last, dev-domain wallets only. -->
+      <div class="card" id="r-devmail-card">
+        <h2>Dev mail connection <span class="badge">@axiom.internal</span></h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">Dev accounts receive through TOT→FATMAMA. Test the live path below.</p>
+        <label>TOT endpoint (dev)</label><input id="r-tot" value="axiom-dev.mooo.com:7400" />
+        <div style="margin-top:.7rem" class="row">
+          <button id="r-test" class="ghost">Test TOT → FATMAMA</button>
+          <button id="r-register" class="ghost">Register mailbox</button>
+        </div>
+        <pre id="r-conn" class="muted" style="margin:.7rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+    </div>
+
+    <!-- History tab -->
+    <div id="tab-history" class="hidden">
+      <div class="card">
+        <h2>Activity</h2>
+        <div id="h-list" class="muted">No transactions yet.</div>
+        <div style="margin-top:.7rem"><button id="h-refresh" class="ghost" style="width:100%">Refresh</button></div>
+      </div>
+    </div>
+
+    <!-- Proof tab: verify an imported Send Proof .cbor offline + certificate PDF -->
+    <div id="tab-proof" class="hidden">
+      <div class="card">
+        <h2>Verify a Send Proof</h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">Import a <b>.cbor</b> Send Proof bundle and verify it <b>offline</b> — no network, no wallet. The bundle is the verifiable object; the certificate is a presentation of it.</p>
+        <input type="file" id="p-file" accept=".cbor,application/cbor" />
+        <div class="row" style="margin-top:.8rem;gap:.5rem">
+          <button id="p-verify" style="flex:1" disabled>Verify</button>
+          <button id="p-cert" class="ghost" style="flex:1" disabled>Download certificate PDF</button>
+        </div>
+        <pre id="p-out" class="muted" style="margin:.8rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:.5rem">
+      <button id="ov-refresh" class="ghost">Refresh</button>
+      <button id="ov-lock" class="ghost">Lock</button>
+      <button id="ov-forget" class="ghost" style="color:var(--bad,#d66)">Forget</button>
+    </div>
+  </div>
+</div>
+<!-- Re-auth gate: every value-moving op (send / redeem / claim / heal)
+     requires the wallet key here. The key is NEVER cached, so an unlocked
+     screen left unattended can't move funds without it. -->
+<div id="keygate" style="position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:200;padding:1rem">
+  <div class="card" style="max-width:360px;width:100%;margin:0">
+    <h2 id="keygate-title" style="margin-top:0">Confirm</h2>
+    <p class="muted" id="keygate-msg" style="margin:.1rem 0 .6rem">Enter your wallet key to authorize.</p>
+    <input id="keygate-input" type="password" placeholder="Wallet key" autocomplete="off" />
+    <div id="keygate-err" style="color:var(--bad,#e06666);font-size:.82rem;margin-top:.5rem;display:none"></div>
+    <div class="row" style="margin-top:.9rem;gap:.5rem">
+      <button id="keygate-cancel" class="ghost" style="flex:1">Cancel</button>
+      <button id="keygate-ok" style="flex:1">Authorize</button>
+    </div>
+  </div>
+</div>
+<!-- dv-change warning. One overlay reused by the on-load notice (1 button) and
+     the pre-send verify gate (2 buttons). Body is filled by dvCardHTML(). -->
+<div id="dvmodal" style="position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:200;padding:1rem">
+  <div class="card" style="max-width:420px;width:100%;margin:0">
+    <div id="dvmodal-body"></div>
+    <div class="row" id="dvmodal-buttons" style="margin-top:.9rem;gap:.5rem"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<!-- 乖乖 (椰子口味) — axiom-denomination canary; 7 taps on the build chip reveals it -->
+<div class="egg" id="egg"><pre id="egg-art"></pre><div class="flavor">乖乖 · 椰子口味</div><div class="hint">click anywhere to dismiss</div></div>
+
+<!-- App-layer at-rest crypto (NOT the SDK): TweetNaCl 1.0.3 sets global `nacl`,
+     used synchronously by vault.js inside the storage shim. Classic script so it
+     loads before the deferred module below and works in the single-file bundle. -->
+<script src="./nacl.min.js"></script>
+<script type="module">
+// DEV cache-bust: always fetch fresh JS + wasm + ELF so a stale cached
+// binding (e.g. an older createWithJsStorage arity) can never be the cause.
+const V = Date.now();
+const _mod = await import('../pkg/axiom_sdk_wasm.js?v=' + V);
+const { setup, getCoreId, canonicalCoreId, Wallet, formatAxc, formatLdollarShort, sdkVersion, atomsPerAxc, kuaikuaiArt } = _mod;
+const _init = _mod.default;
+// Dev mail transport (TOT→FATMAMA): POP3 pull + XAXIOM-REGISTER over the tunnel.
+const { fatmamaRegister, kiddoReceiveCycle } = await import('./kiddo.js?v=' + V);
+// Genesis dev-funds claim + redeem (fund/commit splits) and the TOT transport.
+const { claimGenesis, redeem, send, sendWithScarPasscode, heal, burnScars, halReanchor, halComplete, recall, recallComplete, resumeSend } = await import('./genesis.js?v=' + V);
+const { makeTotTransport, totConfigFrom } = await import('./transport.js?v=' + V);
+// App-layer at-rest encryption for the wallet keystore (app concern, not SDK).
+const { VAULT } = await import('./vault.js?v=' + V);
+
+// ── localStorage-backed Storage (the SDK Storage trait is synchronous;
+// localStorage is the one synchronous browser store, so it works on the
+// main thread without a Worker. P5's heavy CL1 execution moves to a
+// Worker + OPFS later). ───────────────────────────────────────────────
+const FS = 'axfs::';
+const b64enc = u8 => { let s=''; for (let i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return btoa(s); };
+const b64dec = str => { const s=atob(str); const u8=new Uint8Array(s.length); for (let i=0;i<s.length;i++) u8[i]=s.charCodeAt(i); return u8; };
+// The wallet keystore (and only it) is encrypted at rest by the app-layer
+// VAULT. maildir, dv counters, and everything else stay plaintext — they hold
+// no secrets and the SDK reaches the keystore through this one path. The shim
+// is SYNCHRONOUS (the wasm SDK calls it inside sync wallet.save() calls), which
+// is exactly why VAULT.seal/open use a synchronous cipher; see vault.js.
+const isKeystore = path => path.endsWith('/wallet.axiom');
+const storage = {
+  read(path){
+    const v=localStorage.getItem(FS+path); if(v===null) return null;
+    const bytes=b64dec(v);
+    return isKeystore(path) ? VAULT.open(bytes, path) : bytes;  // throws VAULT_* on bad key/legacy/tamper
+  },
+  writeAtomic(path,data){
+    const bytes = isKeystore(path) ? VAULT.seal(data, path) : data;
+    localStorage.setItem(FS+path, b64enc(bytes));
+  },
+  listDir(path){ const pre=path.endsWith('/')?path:path+'/'; const out=new Set();
+    for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(!k.startsWith(FS)) continue;
+      const p=k.slice(FS.length); if(p.startsWith(pre)){ const rest=p.slice(pre.length); if(rest && !rest.includes('/')) out.add(rest); } }
+    return [...out]; },
+  rename(from,to){ const v=localStorage.getItem(FS+from); if(v===null) throw new Error('rename: missing '+from); localStorage.setItem(FS+to,v); localStorage.removeItem(FS+from); },
+  mkdirP(_){ /* directories are implicit in this flat store */ },
+  remove(path){ localStorage.removeItem(FS+path); },
+};
+
+const PARENT = 'axiom';
+const $ = id => document.getElementById(id);
+const show = (...ids) => ['boot','onboard','unlock','main'].forEach(s => $(s).classList.toggle('hidden', !ids.includes(s)));
+function tab(name) {
+  ['overview','send','receive','history','proof'].forEach(t => $('tab-'+t).classList.toggle('hidden', t!==name));
+  document.querySelectorAll('.nav .tab').forEach(b => b.classList.toggle('active', b.dataset.tab===name));
+  if (name==='receive' && wallet) {
+    // Dev mail connection card only applies to @axiom.internal dev wallets.
+    const isDev = String(wallet.info().email || '').endsWith('@axiom.internal');
+    $('r-devmail-card').style.display = isDev ? '' : 'none';
+  }
+  if (name==='history' && wallet) renderHistory();
+}
+// Self-send recovery types carry no counterparty value (heal + the two
+// YPX-020 HAL kinds). Friendly labels for the raw TxType debug strings.
+// §2: completion is a Redeem (no HalComplete history row).
+const SELF_RECOVERY_TX = new Set(['Heal', 'HalReanchor']);
+const TX_LABEL = { HalReanchor: 'HAL re-anchor' };
+// Activity / history — newest first. Send/Burn are outgoing (−), Receive/
+// Redeem/Genesis incoming (+), Heal + HAL internal (no counterparty value).
+function renderHistory() {
+  const el = $('h-list');
+  let rows;
+  try { rows = wallet.history(100) || []; } catch (e) { el.innerHTML = `<span class="err">${errOf(e)}</span>`; return; }
+  if (!rows.length) { el.textContent = 'No transactions yet.'; return; }
+  el.innerHTML = rows.map(r => {
+    const when = new Date(Number(r.timestamp) * 1000).toLocaleString();
+    const amt = formatAxc(BigInt(r.amount));
+    const amtL = lDollar(r.amount);
+    const isSelf = SELF_RECOVERY_TX.has(r.txType);
+    const sign = (r.txType === 'Send' || r.txType === 'Burn') ? '−' : (isSelf ? '' : '+');
+    const label = TX_LABEL[r.txType] || r.txType;
+    const who = r.counterparty ? ` · ${r.counterparty}` : '';
+    // Self-recovery rows show no AXC (the "0.00" would be misleading).
+    const valTxt = isSelf ? '· self' : `${sign}${amt}${amtL ? ' · ' + amtL : ''}`;
+    const head = `<span class="t">${label} ${valTxt}</span>` +
+                 `<span class="a" title="${r.txid}">${when}${who}</span>`;
+    const fb = r.feeBreakdown || [];
+    if (!fb.length) return `<div class="tier">${head}</div>`;
+    // Expandable: show the receiver-pays fee + where it went (per validator).
+    const totalFee = fb.reduce((s, f) => s + BigInt(f.amount), 0n);
+    const lines = fb.map(f =>
+      `<div class="frow"><span>${f.validatorIdHex.slice(0, 12)}…</span><span>${formatAxc(BigInt(f.amount))}</span></div>`
+    ).join('');
+    return `<details class="tier hist"><summary>${head}</summary>` +
+           `<div class="feebd"><div class="frow tot"><span>Fee paid (receiver-pays)</span><span>${formatAxc(totalFee)}</span></div>${lines}</div></details>`;
+  }).join('');
+}
+let toastT; const toast = m => { const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1600); };
+// Progress bar — animated indeterminate (so a long op never looks frozen).
+// showProg/hideProg also drive the in-flight lock: while any protocol op is
+// running, #main.busy greys out every action that would start a CONCURRENT
+// op (claim/send/redeem/heal). Concurrent TXs from one wallet trip Nabla
+// fork detection (YP §32), so this is a safety gate, not just UX.
+const showProg = title => { $('prog-title-txt').textContent = title; $('prog-txt').textContent = 'starting…'; $('prog').style.display = 'block'; $('main').classList.add('busy'); };
+const progTxt  = txt => { $('prog-txt').textContent = txt; };
+const hideProg = () => { $('prog').style.display = 'none'; $('main').classList.remove('busy'); };
+// Map machine step labels → a clear, ordered step description. The driver
+// only emits cl1/cl5/deliver/nabla; we disambiguate the Nabla calls by
+// position: before the witness round it's a pre-flight check, after it the
+// first is the register and the rest are the FACT confirmation.
+function stepProgress(phase, k = 3) {
+  let hop = 0, witnessed = false, postW = 0;
+  return label => {
+    if (label === 'cl1') progTxt('① signing transaction (CL1)…');
+    else if (label === 'cl5') progTxt('① building redeem proof (CL5)…');
+    else if (label === 'deliver') { hop++; witnessed = true; progTxt(`② witness round — validator ${hop} of ${k}…`); }
+    else if (label === 'nabla') {
+      if (!witnessed) progTxt('checking transaction with Nabla…');
+      else { postW++; progTxt(postW === 1 ? '③ registering with Nabla…' : '④ confirming FACT link…'); }
+    }
+  };
+}
+const errOf = e => e && e.code ? `${e.code}: ${e.message}` : (e && e.message ? e.message : String(e));
+// Persistent, visible message banner — errors do NOT vanish like the toast.
+const setMsg = (text, cls='err') => { const m=$('msg'); m.textContent=text; m.className=`card ${cls}`; m.style.display=text?'block':'none'; if (text) console[cls==='err'?'error':'log']('[axiom]', text); };
+
+// Re-auth gate. Prompts (masked) for the wallet key and verifies it before a
+// value-moving op. The key is NEVER stored — verified here and discarded — so
+// an unlocked-but-unattended screen can't send/redeem/heal/claim. Resolves
+// true on a correct key, false on cancel/empty.
+// `action` is the verb string for the default title/message (e.g. "send 5 AXC").
+// `opts` (optional) overrides for non-default flows like Forget, which has its
+// own warning copy and verifies against a wallet that isn't the open `wallet`:
+//   opts.title  — overrides the title line
+//   opts.msg    — overrides the body line (e.g. the destructive-wipe warning)
+//   opts.okLabel— overrides the confirm-button label (default "Authorize")
+//   opts.verify — pw => bool; defaults to the OPEN wallet's verifyKey. Forget
+//                 from the unlock screen passes one that opens-verifies-closes
+//                 the target wallet, so the key is checked WITHOUT being shown.
+// The input is a masked type="password" (NEVER a native prompt(), which renders
+// the secret in cleartext); the key is verified here and discarded, never cached.
+function askKey(action, opts={}) {
+  const check = opts.verify || (pw => wallet.verifyKey(pw));
+  return new Promise(resolve => {
+    const gate=$('keygate'), input=$('keygate-input'), err=$('keygate-err'), ok=$('keygate-ok');
+    $('keygate-title').textContent = opts.title || (action[0].toUpperCase()+action.slice(1));
+    $('keygate-msg').textContent = opts.msg || `Enter your wallet key to authorize this ${action}.`;
+    ok.textContent = opts.okLabel || 'Authorize';
+    input.value=''; err.style.display='none';
+    gate.style.display='flex'; setTimeout(()=>input.focus(),0);
+    const done = v => { gate.style.display='none'; ok.onclick=null; $('keygate-cancel').onclick=null; input.onkeydown=null; ok.textContent='Authorize'; resolve(v); };
+    const submit = async () => {
+      const pw = input.value;
+      if (!pw) { err.textContent='Enter your wallet key.'; err.style.display='block'; return; }
+      let good=false; try { good = await check(pw); } catch(_){ good=false; }  // check may be async (vault unlock)
+      if (!good) { err.textContent='Wrong wallet key.'; err.style.display='block'; input.value=''; input.focus(); return; }
+      done(true);
+    };
+    ok.onclick = submit;
+    $('keygate-cancel').onclick = () => done(false);
+    input.onkeydown = e => { if (e.key==='Enter') submit(); else if (e.key==='Escape') done(false); };
+  });
+}
+
+// Surface ANY uncaught error / rejection (incl. a module top-level throw)
+// in the banner so the page is never silently dead.
+addEventListener('error', e => setMsg('JS error: ' + (e.message || e.error || e), 'err'));
+addEventListener('unhandledrejection', e => setMsg('Unhandled: ' + errOf(e.reason), 'err'));
+
+let wallet = null;
+// YPX-001 §1.5.1 — incoming payments paused pending THIS wallet's consent.
+// recvScarConsents() consumes each notification from the maildir exactly once
+// (like recv() does for cheques), so accumulate them for the session.
+let SCAR_CONSENTS = [];
+// The wallet key is NEVER cached. Unlock verifies it to open the wallet, then
+// discards it; every value-moving op re-prompts via askKey(). This is what
+// stops an unlocked-but-unattended screen from being used to move funds.
+
+// ── L$ digit_version + Core-divergence (worldline.json) ──────────────────
+// digit_version is the Console's *suggested* L$ display exponent (1 AXC =
+// 10^dv L$) — display-only; AXC/atoms are invariant. Read best-effort from
+// worldline.json; the wallet works fully without it (last-known dv from
+// localStorage, else AXC-only). Mirrors the Mac DigitVersionWatcher + the
+// in-app update checker. NEITHER web build auto-updates — the update action
+// is "download the latest from GitHub" (see the #corelock banner).
+const WORLDLINE_URL = 'https://raw.githubusercontent.com/AXIOM-Origin-Validator/axiom-dist/main/seeds/worldline.json';
+let DV = parseInt(localStorage.getItem('axiom_dv_applied') ?? '0', 10) || 0;
+let DV_STARTED = localStorage.getItem('axiom_dv_started') || '';
+let coreLocked = false;
+let dvNoticeShownThisSession = false;
+// The CoreID this build actually runs = the loaded ELF's CoreID (setup()'s
+// return). The webclient is a dev WASM build with NO baked canonicalCoreId()
+// (that env is only set for the Mac FFI release), so the loaded ELF CoreID —
+// not canonicalCoreId() — is the authoritative left-hand side of the
+// Same-Core hard-lock comparison.
+let MY_COREID = '';
+// atoms → "100.00 L$" at the active dv ('' on any error → caller omits it).
+function lDollar(atoms) { try { return formatLdollarShort(BigInt(atoms), DV >>> 0); } catch (_) { return ''; } }
+const dvFrom = () => parseInt(localStorage.getItem('axiom_dv_from') ?? '0', 10) || 0;
+const dvSendLeft = () => parseInt(localStorage.getItem('axiom_dv_sendleft') ?? '0', 10) || 0;
+const dvLaunchLeft = () => parseInt(localStorage.getItem('axiom_dv_launchleft') ?? '0', 10) || 0;
+
+// Adopt the suggested dv; on a CHANGE, arm both warning channels (3 sends +
+// 3 on-load notices), exactly like the Mac wallet.
+function applyDv(dv, started) {
+  const clamped = Math.max(0, Math.min(255, dv | 0));
+  if (started) { DV_STARTED = started; localStorage.setItem('axiom_dv_started', started); }
+  const prev = parseInt(localStorage.getItem('axiom_dv_applied') ?? '0', 10) || 0;
+  DV = clamped;
+  localStorage.setItem('axiom_dv_applied', String(clamped));
+  if (clamped !== prev) {
+    localStorage.setItem('axiom_dv_from', String(prev));
+    localStorage.setItem('axiom_dv_to', String(clamped));
+    localStorage.setItem('axiom_dv_sendleft', '3');
+    localStorage.setItem('axiom_dv_launchleft', '3');
+  }
+  if (wallet) { try { renderOverview(); } catch (_) {} }
+  maybeShowDvNotice();
+}
+
+// Shared card markup (mirrors the Mac DvChangeCard): AXC on top (invariant),
+// BEFORE → NOW L$, short explanation, large "in effect since <date>".
+function dvCardHTML(atoms, topLabel, counter) {
+  let beforeL = ''; try { beforeL = formatLdollarShort(BigInt(atoms), dvFrom() >>> 0); } catch (_) {}
+  const nowL = lDollar(atoms), axc = formatAxc(BigInt(atoms));
+  return (
+    `<div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.8rem">` +
+      `<span class="warn">⚠</span><b>L$ display unit changed</b>` +
+      `<span class="muted" style="margin-left:auto;font:11px ui-monospace,monospace">${counter}</span></div>` +
+    `<div style="text-align:center;margin-bottom:.7rem">` +
+      `<div class="muted" style="font-size:.68rem;letter-spacing:.06em">${topLabel}</div>` +
+      `<div style="font-size:1.5rem;font-weight:700">${axc}</div>` +
+      `<div class="muted" style="font-size:.68rem">AXC — unchanged</div></div>` +
+    `<div class="row" style="background:rgba(210,153,34,.12);border-radius:9px;padding:.6rem;gap:.4rem">` +
+      `<div style="flex:1;text-align:center"><div class="muted" style="font-size:.68rem">BEFORE</div><div style="font-weight:600">${beforeL}</div></div>` +
+      `<div style="flex:0 0 auto;color:var(--warn);align-self:center">→</div>` +
+      `<div style="flex:1;text-align:center"><div class="warn" style="font-size:.68rem">NOW</div><div style="font-weight:600">${nowL}</div></div></div>` +
+    `<p class="muted" style="margin:.7rem 0 0;text-align:center">Same value, same economics — only the L$ label rescaled. AXC is the real unit; you can ignore L$ and trade in AXC. (White Paper §J.14–J.18)</p>` +
+    (DV_STARTED ? `<div style="text-align:center;margin-top:.55rem"><div class="muted" style="font-size:.68rem;letter-spacing:.06em">IN EFFECT SINCE</div><div style="font-weight:700;font-size:1.05rem">${DV_STARTED}</div></div>` : '')
+  );
+}
+
+// On-load notice (post-unlock; never over the unlock screen) — shows for the
+// next 3 wallet opens after a dv change. One [Got it] counts one.
+function maybeShowDvNotice() {
+  if (dvNoticeShownThisSession || !wallet) return;
+  const left = dvLaunchLeft();
+  if (left <= 0) return;
+  dvNoticeShownThisSession = true;
+  $('dvmodal-body').innerHTML = dvCardHTML(BigInt(atomsPerAxc()), 'EXAMPLE: 1 AXC', `${Math.max(1, 4 - left)}/3`);
+  $('dvmodal-buttons').innerHTML = `<button id="dvmodal-ok" style="flex:1">Got it</button>`;
+  $('dvmodal').style.display = 'flex';
+  $('dvmodal-ok').onclick = () => { localStorage.setItem('axiom_dv_launchleft', String(Math.max(0, left - 1))); $('dvmodal').style.display = 'none'; };
+}
+
+// Pre-send verify gate — resolves true to proceed, false to cancel. Shows
+// THIS send's amount old→new L$ + invariant AXC. Counts one of 3.
+function dvSendGate(amountAtoms) {
+  return new Promise(resolve => {
+    const left = dvSendLeft();
+    if (left <= 0) { resolve(true); return; }
+    $('dvmodal-body').innerHTML = dvCardHTML(BigInt(amountAtoms), 'YOU ARE SENDING', `${Math.max(1, 4 - left)}/3`);
+    $('dvmodal-buttons').innerHTML =
+      `<button id="dvmodal-cancel" class="ghost" style="flex:1">Cancel</button>` +
+      `<button id="dvmodal-ok" style="flex:1">Verify &amp; continue</button>`;
+    $('dvmodal').style.display = 'flex';
+    const done = v => { $('dvmodal').style.display = 'none'; resolve(v); };
+    $('dvmodal-ok').onclick = () => { localStorage.setItem('axiom_dv_sendleft', String(Math.max(0, left - 1))); done(true); };
+    $('dvmodal-cancel').onclick = () => done(false);
+  });
+}
+
+// CoreID Same-Core hard-lock. mine = this build's baked canonicalCoreId();
+// theirs = the live worldline core_id. Mismatch ⇒ disable value ops + show the
+// download-from-GitHub banner. Only called when worldline.json was reachable.
+function applyCoreLock(mine, theirs) {
+  coreLocked = true;
+  // A hosted instance can't be fixed by the visitor — the operator has to
+  // download the latest build and redeploy it. The offline file's holder
+  // downloads it themselves. Same hard-lock; different who-acts wording.
+  const hosted = (location.protocol === 'http:' || location.protocol === 'https:');
+  const pre = `This wallet is outdated — it runs Core ${mine.slice(0,8)}…, but the network is on ${theirs.slice(0,8)}…. Transactions are disabled to protect your funds. `;
+  $('corelock-msg').textContent = pre + (hosted
+    ? `Whoever hosts this page must download the latest build and redeploy it.`
+    : `Download the latest AXIOM web wallet to continue.`);
+  $('corelock').style.display = 'block';
+  $('main').classList.add('corelock');
+}
+const LOCK_MSG = 'Transactions are disabled — your Core is outdated. Download the latest build (see the banner at the top).';
+
+// Best-effort worldline read: adopt the suggested dv + apply the CoreID lock.
+// Failure (offline / unreachable) is silent — the wallet keeps working.
+async function checkWorldline() {
+  let w = null;
+  try { const r = await fetch(WORLDLINE_URL + '?t=' + Date.now(), { cache: 'no-store' }); if (r.ok) w = await r.json(); }
+  catch (_) { return; }
+  if (!w) return;
+  if (typeof w.digit_version === 'number') applyDv(w.digit_version, w.digit_version_started || '');
+  const theirs = String(w.core_id || '').toLowerCase();
+  // Loaded ELF CoreID is authoritative; canonicalCoreId() is only baked for
+  // the Mac FFI release (empty in this dev WASM build), so it's just a fallback.
+  let mine = String(MY_COREID || '').toLowerCase();
+  if (!mine) { try { mine = String(canonicalCoreId() || '').toLowerCase(); } catch (_) {} }
+  if (theirs && mine && theirs !== mine) applyCoreLock(mine, theirs);
+}
+
+await _init({ module_or_path: new URL('../pkg/axiom_sdk_wasm_bg.wasm?v=' + V, import.meta.url) });
+console.log('[axiom] wasm module init OK; sdk', sdkVersion());
+setMsg('Ready · sdk ' + sdkVersion() + ' · build ' + V, 'ok');
+
+// ── CL1/CL5 Web Worker — runs the heavy AVM signing off the UI thread so the
+// page doesn't freeze. Best-effort: if the worker can't load (single-file /
+// file://), CL1/CL5 stay null and the SDK driver signs in-process. ──────────
+let CL1 = null, CL5 = null, clWorker = null;
+const clPending = new Map(); let clReqId = 0;
+function clCall(type, payload) {
+  return new Promise((resolve, reject) => {
+    const id = ++clReqId;
+    // Timeout so a hung worker rejects → the SDK driver runs CL in-process.
+    const to = setTimeout(() => { clPending.delete(id); reject(new Error('cl-worker timeout: ' + type)); },
+      type === 'init' ? 6000 : 45000);
+    clPending.set(id, {
+      resolve: v => { clearTimeout(to); resolve(v); },
+      reject: e => { clearTimeout(to); reject(e); },
+    });
+    clWorker.postMessage({ type, id, ...payload });
+  });
+}
+// Worker construction + init payload differ by distribution; pack.py rewrites
+// BOTH for the single-file build:
+//   HTTP build  → a file-based ES-module worker that fetches its own wasm.
+//   Single file → a classic Blob worker spawned from the inlined no-modules
+//                 glue, with the wasm bytes passed in (a Blob worker on file://
+//                 can't fetch them).
+function makeClWorker() { return new Worker('./cl-worker.js?v=' + V, { type: 'module' }); }
+function clInitPayload(elf) { return { elf }; } // module worker fetches its own wasm
+async function initClWorker(elf) {
+  try {
+    const w = makeClWorker();
+    w.onmessage = (e) => {
+      const { id, ok, proof, error } = e.data || {};
+      const p = clPending.get(id); if (!p) return; clPending.delete(id);
+      ok ? p.resolve(proof) : p.reject(new Error(error || 'cl-worker error'));
+    };
+    w.onerror = () => {}; // surfaced via the init timeout in clCall
+    clWorker = w;
+    await clCall('init', clInitPayload(elf));
+    // Signatures mirror sdk/wasm/src/transport.rs run_cl1 / run_cl5.
+    CL1 = (txJson, stateJson, prevReceipts, factChain, privateKey, now) =>
+      clCall('cl1', { txJson, stateJson, prevReceipts, factChain, privateKey, now });
+    // current_hibernation + oodsAttestation arrive LAST positionally
+    // (transport.rs pushes them as trailing args); the worker re-inserts
+    // hibernation into cl5Run's slot 5 and appends the reading last.
+    CL5 = (receiverPk, chequeBundle, balance, walletSeq, stateId, chequeClaimProof, txidAttestation, privateKey, now, currentHibernation, oodsAttestation) =>
+      clCall('cl5', { receiverPk, chequeBundle, balance, walletSeq, stateId, chequeClaimProof, txidAttestation, privateKey, now, currentHibernation, oodsAttestation });
+    console.log('[axiom] CL worker ready — signing runs off the UI thread');
+  } catch (e) {
+    console.warn('[axiom] CL worker unavailable — signing in-process, UI may pause:', e?.message || e);
+    clWorker = null; CL1 = null; CL5 = null;
+  }
+}
+
+try {
+  const elf = new Uint8Array(await (await fetch('../pkg/axiom-core.elf?v=' + V)).arrayBuffer());
+  const coreId = setup(elf);
+  MY_COREID = coreId;   // authoritative CoreID for the Same-Core hard-lock
+  $('coreid').textContent = `Core ${coreId.slice(0,8)}… · sdk ${sdkVersion()}`;
+  console.log('[axiom] setup OK; CoreID', coreId);
+  initClWorker(elf); // move CL1/CL5 off the UI thread (best-effort; falls back in-process)
+} catch (e) {
+  // Non-fatal: wallet create is keygen + storage and does NOT need the AVM.
+  // Only send/CL1 later needs it. Keep the page alive + handlers wired.
+  $('coreid').textContent = 'Core: not loaded';
+  setMsg('Core ELF not loaded (' + errOf(e) + ') — wallet create still works; send needs it.', 'warn');
+  console.warn('[axiom] setup failed (non-fatal)', e);
+}
+
+// Best-effort worldline read (suggested dv + CoreID Same-Core hard-lock).
+// Non-blocking; silently no-ops offline. Runs regardless of setup() outcome —
+// canonicalCoreId() is a baked build constant, available even if the ELF
+// didn't load.
+checkWorldline();
+
+// 乖乖 (椰子口味) — the axiom-denomination canary as an easter egg. 7 taps on
+// the build chip within 2 s reveals the art; click anywhere to dismiss. The art
+// comes straight from the wasm (kuaikuaiArt → axiom_denomination::KUAIKUAI_ART):
+// if the converter lib were ever unlinked, the art is empty and we show the
+// regression notice instead of our charm. Mirrors the Mac KuaikuaiOverlay.
+(function(){
+  const chip = $('coreid'), egg = $('egg'), art = $('egg-art');
+  if (!chip || !egg) return;
+  let taps = 0, last = 0;
+  chip.style.cursor = 'pointer';
+  chip.addEventListener('click', () => {
+    const now = Date.now();
+    if (now - last > 2000) taps = 0;
+    last = now;
+    if (++taps < 7) return;
+    taps = 0;
+    let a = '';
+    try { a = (typeof kuaikuaiArt === 'function') ? kuaikuaiArt() : ''; } catch (_) {}
+    const ok = a && a.trim();
+    art.textContent = ok ? a : '⚠ 乖乖 missing — axiom-denomination not linked into the wasm (converter regression)';
+    art.style.color = ok ? '' : 'var(--err)';
+    egg.style.display = 'flex';
+  });
+  egg.addEventListener('click', () => { egg.style.display = 'none'; });
+})();
+
+// List every wallet stored in this browser (by scanning the FS keys for
+// axiom/<name>/...). More robust than a single "last wallet" pointer.
+function listWallets() {
+  const names = new Set();
+  const pre = FS + PARENT + '/';
+  for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i);
+    if (k && k.startsWith(pre)) { const name=k.slice(pre.length).split('/')[0]; if (name) names.add(name); } }
+  return [...names].sort();
+}
+function refreshWalletPicker() {
+  const wallets = listWallets();
+  const sel = $('u-wallet');
+  sel.innerHTML = wallets.map(n => `<option>${n}</option>`).join('');
+  const last = localStorage.getItem('axiom_last_wallet');
+  if (last && wallets.includes(last)) sel.value = last;
+  return wallets;
+}
+if (refreshWalletPicker().length > 0) { show('unlock'); $('u-key').focus(); }
+else { show('onboard'); }
+
+function renderOverview() {
+  const info = wallet.info();
+  const st = wallet.status();
+  $('ov-name').textContent = info.name;
+  // formatAxc takes a u64 → wasm needs a BigInt, but serde-wasm-bindgen
+  // serialized balance as a plain JS number. Coerce, or it throws
+  // "invalid argument type in toBigInt operation".
+  $('ov-bal').textContent = formatAxc(BigInt(info.balance)).replace(' AXC','');
+  { const ld = lDollar(info.balance); $('ov-bal-ld').textContent = ld ? '≈ ' + ld : ''; }
+  const byTier = Object.fromEntries(info.addresses); // { Ark, Standard, A+, … }
+  $('ov-addr').textContent = byTier['Standard'] || info.address;  // main k=3
+  $('ov-ark').textContent = byTier['Ark'] || '(none)';            // special k=0
+  $('ov-health').textContent = st.health;
+  $('ov-scar').textContent = st.scarCount;
+  $('ov-seq').textContent = st.walletSeq;
+  $('ov-pending').textContent = st.pendingCheques;
+  $('ov-state').textContent = st.stateId;
+  // Other tiers — Standard (main) + Ark (special) get their own cards above.
+  $('ov-tiers').innerHTML = info.addresses
+    .filter(([t]) => t !== 'Standard' && t !== 'Ark')
+    .map(([tier,addr]) => `<div class="tier"><span class="t">${tier}</span><span class="a">${addr}</span><button class="copy" data-copy="${addr}" title="Copy">📋</button></div>`).join('');
+  // Hide the "Claim dev funds" card once the wallet is funded — a genesis
+  // claim is a once-per-wallet bootstrap (seq>0 means it already ran; a
+  // credited balance means it completed).
+  const funded = Number(st.walletSeq) > 0 && BigInt(info.balance) > 0n;
+  $('ov-claim-card').style.display = funded ? 'none' : '';
+  // Show the recovery card when diagnose() flags heal/burn actions.
+  try {
+    const actions = wallet.diagnose() || [];
+    $('ov-heal-card').style.display = actions.length ? '' : 'none';
+    if (actions.length) $('heal-reason').textContent = actions.map(a => a.reason).join(' · ');
+  } catch (_) { $('ov-heal-card').style.display = 'none'; }
+  // YPX-020: hibernation gate. `hibernationUntil != 0` (a BINARY flag, NOT a
+  // clock — cleared only by HAL complete) → show the persistent banner and
+  // disable every value-moving op except "Finish recovery". The on-screen
+  // estimate is UX only; the real gate is Core's binary flag.
+  // YPX-022 (repurposed): the recall affordance targets the last COMPLETED
+  // send stashed in the wallet file — persists across sessions, so surface
+  // it on every overview render, not just right after a send.
+  try { if (wallet.hasRecallableSend) $('s-recall-box').style.display = ''; } catch (_) {}
+  // Resumable interrupted send (2026-07-08): surface Resume/Discard while a
+  // timed-out round is still valid (the wallet hasn't moved since).
+  refreshInterruptedSendBox();
+  refreshScarConsentBox();
+  try {
+    const hib = Number(wallet.hibernationUntil || 0n);
+    const hibernating = hib !== 0;
+    $('main').classList.toggle('hibernating', hibernating);
+    $('ov-hib-banner').style.display = hibernating ? '' : 'none';
+    if (hibernating) {
+      const nowS = Math.floor(Date.now() / 1000);
+      const left = hib - nowS;
+      // YPX-022: an open (un-completed) recall row means this hibernation is
+      // a RECALL converging, not a HAL re-anchor — name it correctly.
+      let recalling = false;
+      try { recalling = (wallet.recallRecords() || []).some(r => !r.recallChequeId); } catch (_) {}
+      const what = recalling
+        ? 'This wallet recalled an undelivered payment; the retract is settling network-wide.'
+        : 'This wallet re-anchored after a dead-overlap recovery.';
+      const finishNote = recalling
+        ? 'Finishing redeems the recall cheque and credits the recovered amount.'
+        : 'You can finish recovery once it passes.';
+      $('ov-hib-detail').textContent = left > 0
+        ? `${what} Sends and redeems are paused — convergence window ~${left}s. ${finishNote}`
+        : `${what} The convergence window has passed — finishing recovery is likely ready now.`;
+    }
+  } catch (_) { $('main').classList.remove('hibernating'); $('ov-hib-banner').style.display = 'none'; }
+  syncCheckModePicker();   // KI#34 WI2/WI5 — reflect this wallet's stored check mode
+  show('main');
+  tab('overview');
+  // dv-change on-load notice — only reachable once the wallet is open (never
+  // over the unlock screen), mirroring the Mac post-login launch popup.
+  maybeShowDvNotice();
+}
+
+// Dev-account creation passcode — a simple friction gate (not real security;
+// it's in the client, same as the Mac app's kAddPairDevPasscode). For now the
+// webclient creates dev (@axiom.internal) accounts ONLY; public accounts
+// unlock when validators are wired to sendmail for real-email receive.
+const DEV_DOMAIN = 'axiom.internal';
+const DEV_PASSCODE = 'fatmama approve axiom';
+$('o-create').onclick = async () => {
+  setMsg('');
+  const name = $('o-name').value.trim();
+  const local = $('o-email-local').value.trim().toLowerCase();
+  const key = $('o-key').value, key2 = $('o-key2').value;
+  const dev = $('o-dev').value;
+  if (!name) { setMsg('Enter a wallet name.', 'err'); $('o-name').focus(); return; }
+  if (!local) { setMsg('Enter the dev email (the part before @axiom.internal).', 'err'); $('o-email-local').focus(); return; }
+  if (/[^a-z0-9._-]/.test(local)) { setMsg('Dev email: letters, digits, and . _ - only (before @axiom.internal).', 'err'); $('o-email-local').focus(); return; }
+  if (dev !== DEV_PASSCODE) { setMsg('Developer passcode required to create a test account.', 'err'); $('o-dev').focus(); return; }
+  if (!key) { setMsg('Enter a wallet key (password) — the field is empty.', 'err'); $('o-key').focus(); return; }
+  if (key !== key2) { setMsg('Wallet keys do not match — re-enter to confirm.', 'err'); $('o-key2').focus(); return; }
+  const email = `${local}@${DEV_DOMAIN}`;   // dev class — auto-routed to the dev-AXC pool
+  try {
+    console.log('[axiom] creating wallet', { name, email, parent: PARENT });
+    await VAULT.init(key);   // derive the at-rest key BEFORE create (it persists immediately)
+    wallet = Wallet.createWithJsStorage(name, email, key, PARENT, storage);
+    console.log('[axiom] created; saving…');
+    wallet.save();
+    localStorage.setItem('axiom_last_wallet', name);
+    setMsg('');
+    toast('wallet created');
+    renderOverview();
+    console.log('[axiom] overview rendered');
+  } catch (e) {
+    VAULT.lock();
+    setMsg('Create failed — ' + errOf(e), 'err');
+    console.error('[axiom] create failed', e);
+  }
+};
+
+// Decode a wallet backup file to canonical AXWL bytes. Accepts the encrypted
+// portable backup "AXPW" (Mac Wallets → Export — PBKDF2 + AES-GCM, decrypted with
+// the wallet key via async WebCrypto, fine at import time) OR a raw AXWL blob.
+// Frame: "AXPW" | ver | kdf | salt(16) | nonce(12) | AES-256-GCM(ct‖tag).
+async function decodePortableBackup(buf, password) {
+  if (buf.length > 34 && buf[0]===0x41 && buf[1]===0x58 && buf[2]===0x50 && buf[3]===0x57) { // "AXPW"
+    const salt = buf.slice(6, 22), nonce = buf.slice(22, 34), ct = buf.slice(34);
+    const enc = new TextEncoder();
+    const dom = enc.encode('AXIOM_PORTABLE_WALLET_v1'), pw = enc.encode(password);
+    const material = new Uint8Array(dom.length + 1 + pw.length);
+    material.set(dom, 0); material[dom.length] = 0; material.set(pw, dom.length + 1);
+    const base = await crypto.subtle.importKey('raw', material, 'PBKDF2', false, ['deriveKey']);
+    const k = await crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt, iterations:600000, hash:'SHA-256' },
+      base, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+    try { return new Uint8Array(await crypto.subtle.decrypt({ name:'AES-GCM', iv:nonce }, k, ct)); }
+    catch (_) { throw new Error('AXPW_BADKEY'); }
+  }
+  return buf;  // raw canonical AXWL — validated by the caller
+}
+
+// Import a wallet from a backup (AXPW encrypted export, or a raw AXWL). JS-only:
+// decode → seal into this browser's at-rest AXEJ envelope under the wallet's own
+// key → open + verifyKey. No new keypair is created — the imported keys are kept.
+$('o-import').onclick = async () => {
+  setMsg('');
+  const name = $('o-name').value.trim();
+  const key = $('o-key').value;
+  const f = $('o-import-file').files[0];
+  if (!name) { setMsg('Enter a wallet name (the Name field above).', 'err'); $('o-name').focus(); return; }
+  if (/[^a-z0-9._-]/i.test(name)) { setMsg('Name: letters, digits, and . _ - only.', 'err'); $('o-name').focus(); return; }
+  if (listWallets().includes(name)) { setMsg(`A wallet named "${name}" already exists in this browser.`, 'err'); return; }
+  if (!key) { setMsg('Enter the wallet key — the password the wallet was exported with.', 'err'); $('o-key').focus(); return; }
+  if (!f) { setMsg('Choose a wallet backup file (.axpw / wallet.axiom) to import.', 'err'); return; }
+  try {
+    const raw = new Uint8Array(await f.arrayBuffer());
+    let buf;
+    try { buf = await decodePortableBackup(raw, key); }
+    catch (pe) {
+      if (String(pe && pe.message || pe).includes('AXPW_BADKEY')) {
+        setMsg('Wrong key for this backup — it must be the wallet key it was exported with.', 'err'); $('o-key').focus(); return;
+      }
+      throw pe;
+    }
+    // After decode, buf must be canonical AXWL (magic "AXWL").
+    if (buf.length < 6 || buf[0]!==0x41 || buf[1]!==0x58 || buf[2]!==0x57 || buf[3]!==0x4C) {
+      setMsg('Not a wallet backup (bad magic). On the Mac wallet use Wallets → Export.', 'err'); return;
+    }
+    await VAULT.init(key);                                       // fresh at-rest key for THIS browser
+    storage.writeAtomic(`${PARENT}/${name}/wallet.axiom`, buf);  // seals the AXWL into an AXEJ frame in localStorage
+    wallet = Wallet.openWithJsStorage(`${PARENT}/${name}`, storage);
+    if (!wallet.verifyKey(key)) {                                // key must match the wallet's own auth_hash
+      try { wallet.close(); } catch(_){} wallet = null; VAULT.lock(); forgetWallet(name);
+      setMsg('Wrong key for this backup — it must be the password the wallet was created with on the source device.', 'err'); $('o-key').focus(); return;
+    }
+    localStorage.setItem('axiom_last_wallet', name);
+    setMsg('');
+    toast('wallet imported');
+    renderOverview();
+  } catch (e) {
+    try { wallet?.close(); } catch(_){} wallet = null; VAULT.lock();
+    try { forgetWallet(name); } catch(_){}                       // don't leave a half-written wallet behind
+    const m = String(e && e.message || e);
+    if (m.includes('VersionMismatch') || m.toLowerCase().includes('version'))
+      setMsg('This backup is an older wallet format and can\'t be imported into this build. Re-export from an up-to-date source.', 'err');
+    else setMsg('Import failed — ' + errOf(e), 'err');
+    console.error('[axiom] import failed', e);
+  }
+};
+
+$('u-open').onclick = async () => {
+  setMsg('');
+  const name = $('u-wallet').value;
+  const key = $('u-key').value;
+  if (!name) { setMsg('No wallet selected.', 'err'); return; }
+  if (!key)  { setMsg('Enter your wallet key to unlock.', 'err'); $('u-key').focus(); return; }
+  try {
+    // Derive the at-rest key from the wallet's stored salt BEFORE opening — the
+    // SDK's open reads the (encrypted) keystore through the shim. A wrong key →
+    // VAULT.open throws VAULT_BADKEY at that read, so decryption IS the gate.
+    const raw = localStorage.getItem(FS + `${PARENT}/${name}/wallet.axiom`);
+    if (raw === null) { setMsg('Wallet data not found in this browser.', 'err'); return; }
+    const frame = b64dec(raw);
+    if (!VAULT.isVaultFrame(frame)) {
+      setMsg('This wallet predates at-rest encryption and can no longer be opened — re-create it (Forget, then New).', 'err'); return;
+    }
+    await VAULT.unlock(key, VAULT.saltOf(frame));
+    wallet = Wallet.openWithJsStorage(`${PARENT}/${name}`, storage);
+    if (!wallet.verifyKey(key)) {               // protocol owner-proof (YP §39.3) — defence in depth
+      try { wallet.close(); } catch(_){} wallet = null; VAULT.lock();
+      setMsg('Wrong wallet key — try again.', 'err'); $('u-key').focus(); return;
+    }
+    localStorage.setItem('axiom_last_wallet', name);
+    $('u-key').value = '';
+    setMsg('');
+    renderOverview();
+  } catch (e) {
+    try { wallet?.close(); } catch(_){} wallet = null; VAULT.lock();
+    const m = String(e && e.message || e);
+    if (m.includes('VAULT_BADKEY')) { setMsg('Wrong wallet key — try again.', 'err'); $('u-key').focus(); }
+    else { setMsg('Open failed — ' + errOf(e), 'err'); console.error('[axiom] open failed', e); }
+  }
+};
+$('u-new').onclick = () => { setMsg(''); $('o-key').value=''; $('o-key2').value=''; show('onboard'); $('o-name').focus(); };
+// Wipe every axfs key for axiom/<name>/... + the last-wallet pointer.
+// Browser-local only — there is no on-chain wallet delete.
+function forgetWallet(name) {
+  for (let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if (k && k.startsWith(FS+`${PARENT}/${name}/`)) localStorage.removeItem(k); }
+  if (localStorage.getItem('axiom_last_wallet') === name) localStorage.removeItem('axiom_last_wallet');
+}
+// Forget is destructive, so it requires the wallet key (verifyKey) — a
+// confirm() click alone shouldn't be able to wipe a wallet. It routes through
+// askKey()'s MASKED keygate overlay (never a native prompt(), which would show
+// the secret key in cleartext), with the destructive-wipe warning as the body.
+const forgetWarn = name =>
+  `This PERMANENTLY removes "${name}" from this browser. Make sure you have your ` +
+  `wallet key + a backup. Enter your wallet key to confirm.`;
+$('u-forget').onclick = async () => {
+  const name = $('u-wallet').value;
+  if (!name) return;
+  // Wallet isn't open on the unlock screen — verify by opening it just long
+  // enough to check the key (same path as u-open), then close. The key stays
+  // inside the gate (masked) and is never shown or cached.
+  // A legacy (pre-encryption) keystore can't be opened to key-verify it — it's
+  // unrecoverable dead data, so allow removal behind a plain confirm.
+  const raw0 = localStorage.getItem(FS + `${PARENT}/${name}/wallet.axiom`);
+  if (raw0 !== null && !VAULT.isVaultFrame(b64dec(raw0))) {
+    if (confirm(`"${name}" predates at-rest encryption and can't be opened. Remove it from this browser?`)) {
+      forgetWallet(name);
+      if (refreshWalletPicker().length === 0) show('onboard'); else show('unlock');
+    }
+    return;
+  }
+  const ok = await askKey('forget', {
+    title: `Forget "${name}"`, msg: forgetWarn(name), okLabel: 'Forget',
+    verify: async pw => {
+      if (raw0 === null) return false;
+      let w;
+      try {
+        await VAULT.unlock(pw, VAULT.saltOf(b64dec(raw0)));   // wrong pw → open throws below
+        w = Wallet.openWithJsStorage(`${PARENT}/${name}`, storage);
+      } catch (e) { VAULT.lock(); return false; }             // VAULT_BADKEY etc. → wrong key
+      const good = w.verifyKey(pw);
+      try { w.close(); } catch(_){}
+      VAULT.lock();                                            // not staying in this wallet
+      return good;
+    }
+  });
+  if (!ok) return;                               // cancelled / wrong key (gate showed it)
+  forgetWallet(name);
+  if (refreshWalletPicker().length === 0) show('onboard'); else show('unlock');
+};
+// Forget the wallet you're currently in (Overview). Verify the key on the
+// open wallet (default verifier), then close + wipe + reload.
+$('ov-forget').onclick = async () => {
+  const name = wallet?.info()?.name;
+  if (!name) return;
+  const ok = await askKey('forget', {
+    title: `Forget "${name}"`, msg: forgetWarn(name), okLabel: 'Forget' });
+  if (!ok) return;                               // cancelled / wrong key (gate showed it)
+  try { wallet?.close(); } catch(_){} wallet=null;
+  forgetWallet(name);
+  location.reload();
+};
+
+// One delegated handler for every copy button (Overview, Ark, tiers, Receive).
+// A button carries either data-copy="<literal>" or data-copy-target="<id>".
+$('main').addEventListener('click', e => {
+  const b = e.target.closest('.copy'); if (!b) return;
+  const text = b.dataset.copy ?? ($(b.dataset.copyTarget)?.textContent ?? '');
+  if (text && text !== '(none)') { navigator.clipboard?.writeText(text); toast('copied'); }
+});
+// Tab navigation.
+document.querySelectorAll('.nav .tab').forEach(b => b.onclick = () => { setMsg(''); tab(b.dataset.tab); });
+
+// Send — full SendMachine: build TX → CL1 → S-ABR k-witness round over TOT
+// → register → balance debited. Receiver-pays: sender loses only the amount.
+$('s-send').onclick = async () => {
+  setMsg('');
+  const to = $('s-to').value.trim();
+  const amt = parseFloat($('s-amt').value);
+  if (!to) { setMsg('Enter a recipient.', 'err'); $('s-to').focus(); return; }
+  if (!(amt > 0)) { setMsg('Enter an amount greater than 0.', 'err'); $('s-amt').focus(); return; }
+  if (!wallet) return;
+  if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
+  const amountAtoms = BigInt(Math.round(amt * Number(atomsPerAxc())));
+  if (!(await dvSendGate(amountAtoms))) return;     // dv-change verify gate (1/3…3/3)
+  if (!(await askKey(`send ${amt} AXC`))) return;   // re-auth gate
+  const btn = $('s-send'); btn.disabled = true;
+  try {
+    const host = ($('c-host')?.value.trim() || 'axiom-dev.mooo.com').replace(/:\d+$/, '');
+    const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+    const transport = mkTransport(host, 'witness');
+    const params = {
+      validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+      k: 3,
+      inboxNew: `${maildir}/inbox/new`,
+      inboxCur: `${maildir}/inbox/cur`,
+      pollIntervalMs: 250,
+      pollMaxRounds: 720,
+      nablaTcpAddresses: NABLAS,
+    };
+    setMsg(`Sending ${amt} AXC to ${to}…`, 'warn');
+    showProg(`Sending ${amt} AXC to ${to}…`);
+    const r = await withReceivePump(host, () => send(wallet, transport, to, amountAtoms, '', params, stepProgress('Send')));
+    renderOverview();
+    tab('overview');
+    setMsg(`Sent ${amt} AXC to ${to} · txid ${String(r.txid).slice(0, 16)}… · registered=${r.registered}`, 'ok');
+    $('s-to').value = ''; $('s-amt').value = '';
+  } catch (e) {
+    // YPX-001 §1.5.1 — the consent gate PAUSED this payment. It is NOT a
+    // failure: nothing was witnessed and no funds moved. Say so plainly and
+    // surface the passcode box instead of an alarming error.
+    if (e && e.code === 'ScarConsentRequired') {
+      setMsg('Payment paused — the receiver must consent before they can accept this money.', 'warn');
+      console.info('[axiom] scar-consent pause', e);
+    } else {
+      setMsg('Send failed — ' + errOf(e), 'err');
+      console.error('[axiom] send failed', e);
+    }
+  } finally {
+    // YPX-022 (repurposed): the recall targets the last COMPLETED send —
+    // offer it whenever one is stashed (genesis.js send() stashes on
+    // success; a sub-quorum send is a no-op under the quorum gate, so a
+    // failure stashes nothing).
+    try { if (wallet.hasRecallableSend) $('s-recall-box').style.display = ''; } catch (_) {}
+    // Resumable rounds: a per-hop timeout just persisted the round — surface
+    // the Resume/Discard affordance immediately (the catch above showed the
+    // "Send failed — …" timeout message).
+    refreshInterruptedSendBox();
+    refreshScarConsentBox();
+  refreshScarConsentBox();
+    btn.disabled = false;
+    hideProg();
+  }
+};
+
+// ── YPX-001 §1.5.1 — scar-consent (SENDER side) ────────────────────────────
+// The gate PAUSED a payment: the money's provenance carries unverified links,
+// so the receiver must consent before inheriting them. Nothing was witnessed;
+// no funds moved. The SDK persisted the paused send, so this survives a reload.
+function refreshScarConsentBox() {
+  try {
+    const rec = wallet && wallet.pendingScarSend ? wallet.pendingScarSend() : null;
+    const box = $('s-scar-box');
+    if (!box) return;
+    if (!rec) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    const amt = lDollar(rec.amount);
+    if (!rec.current) {
+      // The wallet moved, so the paused txid can never be matched again.
+      $('s-scar-detail').innerHTML =
+        `<span class="err">This paused payment can no longer be completed</span> — the wallet has ` +
+        `moved on since it was paused. Cancel it and send again; the receiver will get a new passcode.`;
+      $('s-scar-send').disabled = true;
+    } else {
+      $('s-scar-send').disabled = false;
+      $('s-scar-detail').innerHTML =
+        `<b>${amt} AXC</b> to <b>${rec.to}</b> is waiting for the receiver's consent. ` +
+        `They were sent a 6-digit passcode — ask them for it and enter it here. ` +
+        `<span class="muted">Nothing has been sent yet; your balance is untouched.</span>`;
+    }
+  } catch (_) { /* no wallet yet */ }
+}
+
+// ── YPX-001 §1.5.1 — scar-consent (RECEIVER side) ──────────────────────────
+// Incoming payments PAUSED pending this wallet's consent. Accepting means
+// inheriting the sender's unverified provenance (§1.5.1a): those marks travel
+// with everything this wallet later spends, until the ORIGINAL payment is
+// cleaned up (re-registered or burned) by whoever made it. There is
+// deliberately NO accept button that calls the network — handing the passcode
+// to the sender IS the consent. Doing nothing declines.
+async function refreshScarConsents() {
+  try {
+    if (!wallet || !wallet.recvScarConsents) return;
+    const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+    const list = wallet.recvScarConsents(maildir) || [];
+    if (list.length) {
+      SCAR_CONSENTS = SCAR_CONSENTS.concat(list);
+    }
+    const card = $('r-consent-card');
+    const out = $('r-consent-list');
+    if (!card || !out) return;
+    if (!SCAR_CONSENTS.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    out.innerHTML = SCAR_CONSENTS.map((c) => {
+      const amt = lDollar(c.amount);
+      const marks = c.scarCount === 1 ? '1 unverified link' : `${c.scarCount} unverified links`;
+      return `<div style="border:1px solid var(--line); border-radius:8px; padding:.6rem; margin-bottom:.5rem">
+        <div><b>${amt} AXC</b> from <b>${c.sender}</b></div>
+        <div class="muted" style="margin:.25rem 0 .5rem">
+          This money carries ${marks} in its history. If you accept, your wallet inherits those
+          marks until the sender cleans them up.
+        </div>
+        <div style="display:flex; align-items:center; gap:.6rem">
+          <span class="muted" style="font-size:11px">Give the sender this passcode to accept:</span>
+          <code style="font:16px ui-monospace,monospace; letter-spacing:.18em">${c.passcode}</code>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { console.warn('[axiom] scar consents', e); }
+}
+
+// Toggle the "interrupted send — resumable" box from wallet.resumableSend()
+// (null when there's no valid round). Called on overview render + after a send.
+function refreshInterruptedSendBox() {
+  try {
+    const rs = wallet && wallet.resumableSend ? wallet.resumableSend() : null;
+    const box = $('s-interrupted-box');
+    if (!box) return;
+    if (rs) {
+      box.style.display = '';
+      $('s-interrupted-detail').textContent =
+        `To ${rs.to} · ${formatAxc(BigInt(rs.amount))} · ${rs.sigsHave}/${rs.sigsNeeded} witnesses collected. ` +
+        `A response arriving after the timeout still counts — Resume sweeps it and continues the same payment.`;
+    } else {
+      box.style.display = 'none';
+    }
+  } catch (_) { /* best-effort UI */ }
+}
+
+// Resume the interrupted send — the same op shell as HAL/recall (re-auth gate,
+// progress, receive pump). The SDK sweeps late responses + continues the SAME
+// tx; on success the round is discarded and the balance is debited.
+$('s-resume').onclick = async () => {
+  await runHalOp(resumeSend, 'Resume send', $('s-resume'), $('s-interrupted-out'), 'resume the interrupted send');
+  refreshInterruptedSendBox();
+  refreshScarConsentBox();
+};
+
+// Discard the interrupted round (nothing from it was committed; balance
+// untouched). Pure-local — no network.
+$('s-discard').onclick = () => {
+  if (!wallet) return;
+  try { wallet.discardResumableSend(); } catch (_) {}
+  refreshInterruptedSendBox();
+  refreshScarConsentBox();
+  setMsg('Interrupted send discarded — nothing was committed.', 'ok');
+};
+
+// YPX-001 §1.5.1 — complete the paused payment with the receiver's passcode.
+// Re-initiates the SAME transaction (same txid) so the validator that stored
+// the passcode can match it; that validator then issues a consent voucher which
+// clears the round's other witnesses. This is the first time funds move.
+$('s-scar-send').onclick = async () => {
+  if (!wallet) return;
+  const btn = $('s-scar-send');
+  const out = $('s-scar-out');
+  const code = ($('s-scar-code').value || '').trim();
+  if (!/^\d{6}$/.test(code)) { out.textContent = 'Enter the 6-digit passcode the receiver gave you.'; return; }
+  const host = envHost();
+  if (!host) { out.textContent = 'Set the env host on the Overview first.'; return; }
+  btn.disabled = true;
+  out.textContent = '';
+  try {
+    const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+    const transport = mkTransport(host, 'witness');
+    const params = {
+      validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+      k: 3,
+      inboxNew: `${maildir}/inbox/new`,
+      inboxCur: `${maildir}/inbox/cur`,
+      pollIntervalMs: 250,
+      pollMaxRounds: 720,
+      nablaTcpAddresses: NABLAS,
+    };
+    showProg('Completing the paused payment…');
+    const r = await withReceivePump(host, () =>
+      sendWithScarPasscode(wallet, transport, params, Number(code), stepProgress('Send')));
+    renderOverview();
+    tab('overview');
+    setMsg(`Payment completed · txid ${String(r.txid).slice(0, 16)}… · registered=${r.registered}`, 'ok');
+    $('s-scar-code').value = '';
+  } catch (e) {
+    // A wrong / expired code keeps the paused record AND the validator's stored
+    // passcode — the user simply re-enters it. Everything else is surfaced as-is.
+    out.textContent = errOf(e);
+    console.warn('[axiom] scar passcode', e);
+  } finally {
+    btn.disabled = false;
+    hideProg();
+    refreshScarConsentBox();
+  }
+};
+
+// Cancel the paused payment. Pure-local and non-destructive: nothing was ever
+// witnessed for it, so no funds move either way. (Declining is also what the
+// RECEIVER does by simply never sharing the passcode.)
+$('s-scar-discard').onclick = () => {
+  if (!wallet) return;
+  try { wallet.discardPendingScarSend(); } catch (_) {}
+  refreshScarConsentBox();
+  setMsg('Paused payment cancelled — nothing was sent.', 'ok');
+};
+
+// YPX-022 RECALL (repurposed) — retract the last completed-but-unclaimed
+// payment. Runs the same op shell as HAL (re-auth gate, progress, receive
+// pump); the reservation opens at Nabla first (a mistimed or settled target
+// comes back with a legible too-early / too-late / already-redeemed /
+// already-recalled reason, nothing spent). On commit the wallet hibernates
+// and the banner's "Finish recovery" redeems the recall cheque.
+$('s-recall').onclick = async () => {
+  await runHalOp(recall, 'Recall payment', $('s-recall'), $('s-recall-out'), 'recall the payment');
+  // Hide the affordance only once the recall actually committed (the wallet
+  // is now hibernating); on refusal it stays visible for a later retry.
+  try { if (Number(wallet.hibernationUntil || 0n) > 0) $('s-recall-box').style.display = 'none'; } catch (_) {}
+};
+
+// Proof tab — offline verification of an imported Send Proof + certificate PDF.
+// Pure: _mod.verifySendProof / certificatePdfFromProof run in-browser against the
+// CBOR bundle — no network, no wallet. Anchors (CoreID/SDID) left undefined =
+// verify internal validity + k-witness without pinning to a published anchor;
+// the verdict still shows the CoreID/SDID so the importer sees the worldline.
+let _proofBytes = null;
+$('p-file').onchange = async () => {
+  setMsg('');
+  const f = $('p-file').files[0];
+  _proofBytes = f ? new Uint8Array(await f.arrayBuffer()) : null;
+  const ok = !!_proofBytes;
+  $('p-verify').disabled = !ok;
+  $('p-cert').disabled = true;
+  $('p-out').textContent = ok ? `Loaded ${f.name} (${_proofBytes.length} bytes). Click Verify.` : '';
+};
+$('p-verify').onclick = () => {
+  if (!_proofBytes) return;
+  try {
+    const v = _mod.verifySendProof(_proofBytes, undefined, undefined);
+    if (v.valid) {
+      const axc = Number(v.amount) / Number(atomsPerAxc());
+      $('p-out').textContent =
+        `✓ VALID Send Proof\n` +
+        `  from       ${v.senderWalletId}\n` +
+        `  to         ${v.receiverWalletId}\n` +
+        `  amount     ${v.amount} atoms (${axc} AXC)\n` +
+        `  message    ${v.messageUtf8 ?? '(none)'}\n` +
+        `  witnesses  ${v.witnessCount}\n` +
+        `  CoreID     ${v.coreIdHex}\n` +
+        `  SDID       ${v.sdidHex}\n` +
+        `  txid       ${v.txidHex}`;
+      setMsg('Send Proof verified.', 'ok');
+      $('p-cert').disabled = false;
+    } else {
+      $('p-out').textContent = `✗ INVALID — ${v.reason ?? 'unknown'}`;
+      setMsg('Send Proof did not verify.', 'err');
+      $('p-cert').disabled = true;
+    }
+  } catch (e) {
+    $('p-out').textContent = 'Verify error — ' + errOf(e);
+    setMsg('Verify failed — ' + errOf(e), 'err');
+  }
+};
+$('p-cert').onclick = () => {
+  if (!_proofBytes) return;
+  try {
+    const pdf = _mod.certificatePdfFromProof(_proofBytes, undefined, undefined);
+    const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'axiom_send_certificate.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setMsg('Certificate PDF downloaded.', 'ok');
+  } catch (e) {
+    setMsg('Certificate failed — ' + errOf(e), 'err');
+  }
+};
+
+// Receive — pull inbound cheques (TOT→FATMAMA), scan them into the wallet,
+// and offer a per-cheque Redeem (CL5). The host comes from the Receive tab's
+// own TOT field; the validator/Nabla set is the shared env discovery.
+function recvHost() { return ($('r-tot').value.trim() || 'axiom-dev.mooo.com:7400').replace(/:\d+$/, ''); }
+// Build a TOT transport for `host`, configured to email-wrap outbound
+// deliveries as `messageType` (witness/redeem) from this wallet's address.
+function mkTransport(host, messageType) {
+  return makeTotTransport(totConfigFrom({
+    validators: ENV_VALIDATORS.map(([, n], i) => ({ email: `${n}@axiom`, totWs: `ws://${host}:${7400 + i}` })),
+    nablas: NABLAS,
+    nablaTotWs: `ws://${host}:7400`,
+    fromEmail: wallet.info().email,
+    messageType,
+    cl1: CL1, cl5: CL5,   // null unless the CL worker came up → in-process fallback
+  }));
+}
+function recvParams() {
+  const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+  return {
+    validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+    k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+    pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
+  };
+}
+
+// ── KI#34 WI2/WI5 — per-wallet incoming-payment-check (Nabla selection) mode ──
+// Mirrors the macApp / native NablaSelectionMode. Which Nablas verify a cheque
+// you redeem is a per-wallet receiver CHOICE (a double-spend is always caught
+// with zero economic damage; only this wallet could briefly accept bad money).
+// Persisted per wallet in localStorage. Default mirrors the macApp default.
+const CHECK_MODE_KEY = a => `axiom_nabla_mode.${a}`;
+function getCheckMode() {
+  try { const a = wallet?.info().address; return (a && localStorage.getItem(CHECK_MODE_KEY(a))) || 'default'; }
+  catch (_) { return 'default'; }
+}
+function setCheckMode(m) {
+  try { const a = wallet?.info().address; if (a) localStorage.setItem(CHECK_MODE_KEY(a), m); } catch (_) {}
+}
+const CHECK_MODE_NOTE = {
+  default: '1 from the sender’s suggestion + 2 random. Fast — fine for everyday wallets.',
+  secure:  'Your own nodes only; the sender’s suggestion is ignored so it can’t steer the check. Best for important wallets.',
+  random:  '3 fully random nodes — trust nothing the sender supplied.',
+};
+// Build the Nabla address list for a redeem per the chosen mode. `hint` is the
+// cheque's sender nabla_hint address (or null). Default puts the hint first then
+// fills with own nodes; Secure/Random ignore the hint entirely.
+function selectNablas(mode, hint) {
+  const k = 3;
+  const pool = NABLAS.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  if (mode === 'secure') return pool.filter(a => a !== hint).slice(0, k);
+  if (mode === 'random') return pool.slice(0, k);
+  // default: sender hint first (if any), then own nodes, no duplicate
+  const out = hint ? [hint] : [];
+  for (const a of pool) { if (out.length >= k) break; if (a !== hint) out.push(a); }
+  return out.length ? out : pool.slice(0, k);
+}
+// Reflect the stored mode into the picker (call when a wallet opens / renders).
+function syncCheckModePicker() {
+  const sel = $('r-check-mode'); if (!sel) return;
+  const m = getCheckMode();
+  sel.value = m;
+  const note = $('r-check-mode-note'); if (note) note.textContent = CHECK_MODE_NOTE[m] || '';
+}
+if ($('r-check-mode')) {
+  $('r-check-mode').onchange = e => {
+    setCheckMode(e.target.value);
+    const note = $('r-check-mode-note'); if (note) note.textContent = CHECK_MODE_NOTE[e.target.value] || '';
+  };
+}
+function renderCheques(pend) {
+  const el = $('r-cheques');
+  if (!pend || !pend.length) { el.textContent = 'None yet.'; return; }
+  el.innerHTML = pend.map(c => {
+    // The genesis/airdrop cheque is a self-send of 1 AXC — label it as the
+    // airdrop instead of showing the wallet's own address as the "sender".
+    const amt = `${formatAxc(BigInt(c.amount))}${lDollar(c.amount) ? ' · ' + lDollar(c.amount) : ''}`;
+    const who = c.isGenesisAirdrop ? '1 AXC airdrop' : c.sender;
+    return `<div class="tier"><span class="t">${amt} · ${who}</span>` +
+      `<button class="rdm" data-cheque="${c.chequeId}"${c.ready ? '' : ' disabled'}>${c.ready ? 'Redeem' : 'waiting…'}</button></div>`;
+  }).join('');
+}
+async function receiveCycle() {
+  const host = recvHost();
+  purgeMaildirCur(); // reclaim localStorage before writing the pulled mail
+  // Bound the whole pull so a stalled FATMAMA leg can't hang "Pulling…"
+  // forever (fatmamaRegister's .catch only swallows a reject, not a hang).
+  await Promise.race([
+    kiddoReceiveCycle({ smtpWs: `ws://${host}:7400/fatmama/0`, pop3Ws: `ws://${host}:7400/fatmama/1`, email: wallet.info().email, storage, walletDir: `${PARENT}/${wallet.info().name}` }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('pull timed out')), 18000)),
+  ]).catch(() => {});
+  // YPX-001 §1.5.1 — scan for scar-consent notifications BEFORE recv() sweeps
+  // the maildir. These are incoming payments PAUSED pending this wallet's
+  // consent: nothing has moved, and the sender needs the passcode from us.
+  await refreshScarConsents();
+  renderCheques(wallet.recv(`${PARENT}/${wallet.info().name}/maildir`) || []);
+}
+$('r-refresh').onclick = async () => {
+  if (!wallet) return;
+  const btn = $('r-refresh'); btn.disabled = true; btn.textContent = 'Pulling…'; setMsg('');
+  $('r-cheques').textContent = 'Pulling…';
+  console.log('[axiom] pull: start');
+  try { await receiveCycle(); console.log('[axiom] pull: done'); }
+  catch (e) { console.warn('[axiom] pull failed', e); setMsg('Receive failed — ' + errOf(e), 'err'); }
+  finally { btn.disabled = false; btn.textContent = 'Check for cheques'; }
+};
+// Delegated per-cheque Redeem.
+$('r-cheques').addEventListener('click', async e => {
+  const b = e.target.closest('.rdm'); if (!b || b.disabled || !wallet) return;
+  const chequeId = b.dataset.cheque;
+  if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
+  if (!(await askKey('redeem this cheque'))) return;   // re-auth gate
+  b.disabled = true; b.textContent = 'redeeming…'; setMsg('');
+  showProg('Redeeming cheque…');
+  const rhost = recvHost();
+  try {
+    // KI#34 WI2/WI5 — pick which Nablas verify this cheque per the wallet's
+    // chosen mode. Default consults the sender's hint first; Secure/Random
+    // ignore it (sender can't steer the check to its own fake Nabla).
+    const params = recvParams();
+    const hint = wallet.chequeNablaHint(chequeId) || null;
+    params.nablaTcpAddresses = selectNablas(getCheckMode(), hint);
+    const r = await withReceivePump(rhost, () => redeem(wallet, mkTransport(rhost, 'redeem'), chequeId, params, stepProgress('Redeem')));
+    renderOverview();
+    setMsg(`Redeemed ${chequeId} · balance ${formatAxc(BigInt(r.newBalance))}`, 'ok');
+    await receiveCycle();
+  } catch (err) {
+    setMsg('Redeem failed — ' + errOf(err), 'err');
+    b.disabled = false; b.textContent = 'Redeem';
+  } finally {
+    hideProg();
+  }
+});
+
+// Raw banner ping through the /fatmama tunnel — proves browser→TOT→FATMAMA.
+function totFatmamaPing(totHost, idx, timeoutMs=7000) {
+  return new Promise((resolve, reject) => {
+    // On https (hosted Pages) route through the Caddy gateway, mirroring kiddo.js
+    // gwWs — a raw ws:// is browser-blocked. Default the TOT port to 7400 if the
+    // entered host omits it, so /tot/<port> matches the gateway route (not /tot/80).
+    let url = `ws://${totHost}/fatmama/${idx}`;
+    if (typeof location !== 'undefined' && location.protocol === 'https:') {
+      try { const u = new URL(url); if (u.protocol === 'ws:') url = `wss://${u.hostname}/tot/${u.port || '7400'}${u.pathname}${u.search}`; } catch (_) {}
+    }
+    let ws; try { ws = new WebSocket(url); } catch(e){ reject(e); return; }
+    ws.binaryType = 'arraybuffer';
+    const t = setTimeout(() => { try{ws.close();}catch(_){} reject(new Error('timeout')); }, timeoutMs);
+    ws.onmessage = ev => { clearTimeout(t); const s = new TextDecoder().decode(new Uint8Array(ev.data)); try{ws.close();}catch(_){} resolve(s.trim().split('\n')[0]); };
+    ws.onerror = () => { clearTimeout(t); reject(new Error('ws error (TOT unreachable or wrong port)')); };
+    ws.onclose = () => { clearTimeout(t); reject(new Error('closed before banner')); };
+  });
+}
+$('r-test').onclick = async () => {
+  const totHost = $('r-tot').value.trim();
+  $('r-conn').textContent = `Testing ws://${totHost}/fatmama/0 …`;
+  try {
+    const smtp = await totFatmamaPing(totHost, 0);
+    const pop3 = await totFatmamaPing(totHost, 1);
+    $('r-conn').innerHTML = `<span class="ok">TOT → FATMAMA OK</span>\nSMTP: ${smtp}\nPOP3: ${pop3}`;
+  } catch (e) { $('r-conn').innerHTML = `<span class="err">FAILED: ${errOf(e)}</span>`; }
+};
+$('r-register').onclick = async () => {
+  if (!wallet) return;
+  const email = wallet.info().email;
+  const totHost = $('r-tot').value.trim();
+  $('r-conn').textContent = `Registering ${email} with FATMAMA via TOT…`;
+  try {
+    await fatmamaRegister(`ws://${totHost}/fatmama/0`, email);
+    $('r-conn').innerHTML = `<span class="ok">Registered ${email}</span>\nFATMAMA will spool mail for this dev account; the pull lands with the redeem wiring.`;
+  } catch (e) { $('r-conn').innerHTML = `<span class="err">Register failed: ${errOf(e)}</span>`; }
+};
+
+// ── Dev env discovery (the running axiom-env) ───────────────────────────
+// validator_id (32-byte hex) + name. Emails are <name>@axiom; each validator
+// has its own TOT at host:7400+i; every TOT tunnels /nabla/0..9 to the 10
+// Nabla nodes (127.0.0.1:7300..7309 — the SDK-facing addresses). IDs from
+// tests/genesis_claim_smoke.py.
+const ENV_VALIDATORS = [
+  ['39afd6a1b4a9fee2c44f9c60b96b5b2048ed4db3d5e9a704b21c077469e72f15','alpha'],
+  ['c9f0502959c5d220077d2a781c63eee5c09e645a732ba377a2f49acc2eb22236','beta'],
+  ['83cabd196228fb2474b8c63259f6f7a442f9647f9e54945b2c3a668b215abd0a','gamma'],
+  ['b997f47b7054c74630cda13e65d8c881461687d2d83f1997c72d536f8941ed2d','delta'],
+  ['56afd350f72d89f542013efc245941fb4a148056b201fe5578428903f1e32d42','epsilon'],
+  ['c9961ad68a207dfa2ecbb7e38d6109f8100ee2f40873c6cffbe59680db28aae4','zeta'],
+  ['e9aee711d6b3487fc6c0769805967b4b0b186a124568e0ff65ddb0c34a90fc62','eta'],
+  ['d52c43af47df6985e861a8c08d903e80c7a415dd1144c360d4dd73f5ec0e4fed','theta'],
+  ['3cfe3076801ba3150cbe70ac1cdc02a393ef53bc0a78764c860a4ec5b1495600','iota'],
+  ['ebc58774adb28e5c80a81dce0b9411c25fd35c23be31ace983dffb53765e22f3','kappa'],
+];
+const NABLAS = Array.from({ length: 10 }, (_, i) => `127.0.0.1:${7300 + i}`);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// The browser analog of the desktop kiddo daemon: while a machine polls
+// the inbox for validator responses (the witness round) or cheques, this
+// pump continuously drains FATMAMA (TOT→POP3) into maildir/inbox/new so
+// those responses actually arrive. Without it the witness round blocks
+// forever — the response sits in FATMAMA, never pulled. Runs for the
+// duration of `fn` and stops when it settles.
+// Delete consumed maildir entries (inbox/cur). The SDK machines rename read
+// witness/cheque responses there as a "done" marker and never read them back,
+// so they pile up and eventually blow the localStorage quota. Safe to purge
+// any time outside an in-flight op. inbox/new is left alone (it may hold an
+// unprocessed cheque).
+function purgeMaildirCur() {
+  if (!wallet) return 0;
+  const pre = FS + `${PARENT}/${wallet.info().name}/maildir/inbox/cur/`;
+  let n = 0;
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(pre)) { localStorage.removeItem(k); n++; }
+  }
+  if (n) console.log('[axiom] purged', n, 'consumed maildir entries');
+  return n;
+}
+
+async function withReceivePump(host, fn) {
+  const email = wallet.info().email;
+  const walletDir = `${PARENT}/${wallet.info().name}`;
+  let running = true;
+  const pump = (async () => {
+    while (running) {
+      try {
+        await kiddoReceiveCycle({ smtpWs: `ws://${host}:7400/fatmama/0`, pop3Ws: `ws://${host}:7400/fatmama/1`, email, storage, walletDir });
+      } catch (_) { /* transient pull error — keep pumping */ }
+      await sleep(600);
+    }
+  })();
+  try { return await fn(); }
+  finally { running = false; try { await pump; } catch (_) {} purgeMaildirCur(); }
+}
+
+// Full genesis dev-funds claim: register mailbox → fund+register+commit →
+// pull the self-send cheque (TOT→FATMAMA) → CL5 redeem. The recv poll loop
+// runs the kiddo cycle (strips email → raw CBOR) + wallet.recv() until a
+// k-ready bundle appears, then redeems it.
+$('ov-claim').onclick = async () => {
+  if (!wallet) return;
+  if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
+  if (!(await askKey('claim dev funds'))) return;   // re-auth gate
+  const btn = $('ov-claim'), out = $('c-out');
+  const host = ($('c-host').value.trim() || 'axiom-dev.mooo.com').replace(/:\d+$/, '');
+  const log = m => { out.textContent += m + '\n'; };
+  btn.disabled = true; out.textContent = '';
+  showProg('Claiming dev funds…');
+  try {
+    const name = wallet.info().name;
+    const walletDir = `${PARENT}/${name}`;
+    const maildir = `${walletDir}/maildir`;
+    // Fund delivers witness requests; redeem delivers redeem requests —
+    // ANTIE dispatches on the Subject type, so each needs its own wrap.
+    const witnessTr = mkTransport(host, 'witness');
+    const redeemTr = mkTransport(host, 'redeem');
+    const common = {
+      validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+      k: 3,
+      inboxNew: `${maildir}/inbox/new`,
+      inboxCur: `${maildir}/inbox/cur`,
+      pollIntervalMs: 250,
+      pollMaxRounds: 720,
+      nablaTcpAddresses: NABLAS,
+    };
+
+    log(`Registering ${wallet.info().email} with FATMAMA…`);
+    await fatmamaRegister(`ws://${host}:7400/fatmama/0`, wallet.info().email).catch(() => {});
+
+    log('Fund + register (k=3 witness round over TOT)…');
+    // The receive pump drains FATMAMA into the inbox throughout, so the
+    // witness rounds (and the cheque) actually arrive.
+    const r = await withReceivePump(host, async () => {
+      const claimRes = await claimGenesis(wallet, witnessTr, { ...common, amount: atomsPerAxc(), reference: 'sdk', offeredFee: 100n }, stepProgress('Fund'));
+      log(`  txid ${String(claimRes.txid).slice(0, 16)}…  registered=${claimRes.registered}`);
+      renderOverview();
+
+      log('Waiting for the self-send cheque…');
+      let chequeId = null;
+      for (let i = 0; i < 120 && !chequeId; i++) {
+        progTxt(`Waiting for cheque… ${i + 1}`);
+        const ready = (wallet.recv(maildir) || []).find(c => c.ready);
+        if (ready) chequeId = ready.chequeId;
+        else await sleep(750);
+      }
+      if (!chequeId) throw new Error('no k-ready cheque after ~3 min — is the env up?');
+      log(`  cheque ${chequeId} ready`);
+
+      log('Redeem (CL5)…');
+      return await redeem(wallet, redeemTr, chequeId, common, stepProgress('Redeem'));
+    });
+    renderOverview();
+    out.innerHTML += `<span class="ok">Done — balance ${formatAxc(BigInt(r.newBalance))}</span>`;
+  } catch (e) {
+    out.innerHTML += `<span class="err">FAILED: ${errOf(e)}</span>`;
+    console.error('[axiom] claim failed', e);
+  } finally {
+    btn.disabled = false;
+    hideProg();
+  }
+};
+
+$('ov-refresh').onclick = () => { renderOverview(); toast('refreshed'); };
+$('h-refresh').onclick = () => { renderHistory(); toast('refreshed'); };
+
+// Heal / scar-burn — auto-selects TX_HEAL (poisoned state) or burn (scar)
+// from wallet state. Witness-typed (goes through handle_witness_request).
+$('ov-heal').onclick = async () => {
+  if (!wallet) return;
+  if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
+  if (!(await askKey('heal the wallet'))) return;   // re-auth gate
+  const btn = $('ov-heal'), out = $('heal-out');
+  const host = ($('c-host')?.value.trim() || 'axiom-dev.mooo.com').replace(/:\d+$/, '');
+  btn.disabled = true; out.textContent = ''; setMsg(''); showProg('Healing wallet…');
+  try {
+    const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+    const params = {
+      validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+      k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+      pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
+    };
+    const r = await withReceivePump(host, () => heal(wallet, mkTransport(host, 'witness'), params, stepProgress('Heal')));
+    renderOverview();
+    setMsg(`Healed · balance ${formatAxc(BigInt(r.newBalance))}`, 'ok');
+  } catch (e) {
+    out.innerHTML = `<span class="err">${errOf(e)}</span>`;
+    setMsg('Heal failed — ' + errOf(e), 'err');
+  } finally {
+    btn.disabled = false; hideProg();
+  }
+};
+// Explicit scar-burn (de-orch: heal no longer auto-burns). Burning DESTROYS
+// the value locked in a scarred FACT link, so it's a deliberate, user-confirmed
+// action — the masked keygate carries the destructive warning + re-auth. Burns
+// ONE scar per run; re-run while the recovery card still shows scars.
+$('ov-burn').onclick = async () => {
+  if (!wallet) return;
+  if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
+  if (!(await askKey('burn', {
+    title: 'Burn a scarred link?',
+    msg: 'This PERMANENTLY DESTROYS the value locked in the scarred FACT link — it cannot be recovered. Burns one scarred link per run; re-run while scars remain. Enter your wallet key to confirm.',
+    okLabel: 'Burn',
+  }))) return;
+  const btn = $('ov-burn'), out = $('heal-out');
+  const host = ($('c-host')?.value.trim() || 'axiom-dev.mooo.com').replace(/:\d+$/, '');
+  btn.disabled = true; out.textContent = ''; setMsg(''); showProg('Burning scarred link…');
+  try {
+    const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+    const params = {
+      validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+      k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+      pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
+    };
+    const r = await withReceivePump(host, () => burnScars(wallet, mkTransport(host, 'witness'), params, stepProgress('Burn')));
+    renderOverview();
+    setMsg(`Burned a scarred link · balance ${formatAxc(BigInt(r.newBalance))}`, 'ok');
+  } catch (e) {
+    out.innerHTML = `<span class="err">${errOf(e)}</span>`;
+    setMsg('Burn failed — ' + errOf(e), 'err');
+  } finally {
+    btn.disabled = false; hideProg();
+  }
+};
+// YPX-020 HAL — re-anchor (dead-overlap recovery) + finish recovery. Same
+// witness-typed self-send shape as heal; the WASM fund fn picks the kind.
+// Re-anchor hibernates the wallet; complete clears it. Runs the real
+// protocol against the live env — not a simulation.
+async function runHalOp(opFn, label, btn, out, verb, ttype = 'witness') {
+  if (!wallet) return;
+  if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
+  if (!(await askKey(verb))) return;   // re-auth gate
+  const host = ($('c-host')?.value.trim() || 'axiom-dev.mooo.com').replace(/:\d+$/, '');
+  btn.disabled = true; out.textContent = ''; setMsg(''); showProg(label + '…');
+  try {
+    const maildir = `${PARENT}/${wallet.info().name}/maildir`;
+    const params = {
+      validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
+      k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+      pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
+    };
+    const r = await withReceivePump(host, () => opFn(wallet, mkTransport(host, ttype), params, stepProgress(label)));
+    renderOverview();
+    setMsg(`${label} done · balance ${formatAxc(BigInt(r.newBalance))}`, 'ok');
+  } catch (e) {
+    out.innerHTML = `<span class="err">${errOf(e)}</span>`;
+    setMsg(`${label} failed — ` + errOf(e), 'err');
+  } finally {
+    btn.disabled = false; hideProg();
+  }
+}
+$('ov-hal-reanchor').onclick = () => runHalOp(halReanchor, 'Re-anchor (HAL)', $('ov-hal-reanchor'), $('hal-out'), 're-anchor the wallet (HAL)');
+$('ov-hib-finish').onclick  = () => {
+  // YPX-022: an open (un-completed) recall row means this hibernation came
+  // from a reclaim — finish via recallComplete (same redeem + hibernation
+  // clear as HAL §2, plus the recall-record fill). Otherwise plain HAL.
+  let openRecall = false;
+  try { openRecall = (wallet.recallRecords() || []).some(r => !r.recallChequeId); } catch (_) {}
+  // Bug #3: the completion IS a redeem — it must ride the 'redeem'-typed
+  // transport ('witness' intake rejects it with "missing field transaction").
+  return runHalOp(openRecall ? recallComplete : halComplete, 'Finish recovery', $('ov-hib-finish'), $('hib-out'), 'finish recovery', 'redeem');
+};
+
+$('ov-lock').onclick = () => { try { wallet?.close(); } catch(_){} wallet=null; location.reload(); };
+</script>
+</body>
+</html>

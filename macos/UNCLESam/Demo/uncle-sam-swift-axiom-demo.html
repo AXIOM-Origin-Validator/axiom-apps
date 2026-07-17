@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UNCLE Sam — SWIFT ⇄ AXIOM correspondent settlement</title>
+<style>
+  :root{
+    --bg:#0a0e16; --bg2:#0e1420; --panel:#141b29; --panel2:#1a2336;
+    --bd:#243044; --bd2:#2e3c54;
+    --fg:#e8edf6; --fg2:#9fb0c8; --fg3:#6b7d99;
+    --navy:#3b6fd6; --navy-soft:rgba(59,111,214,.16);
+    --gold:#e3b341;
+    --axiom:#36d39a; --axiom-soft:rgba(54,211,154,.14);
+    --swift:#5aa9ff; --swift-soft:rgba(90,169,255,.14);
+    --ok:#36d39a; --amber:#e3b341; --red:#ff6b6b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 700px at 50% -10%,#10182a,var(--bg));
+       color:var(--fg);font-family:var(--sans);overflow:hidden;
+       display:flex;flex-direction:column;height:100vh}
+
+  /* ── Header ───────────────────────────────────────────── */
+  header{display:flex;align-items:center;gap:16px;padding:14px 26px;
+         border-bottom:1px solid var(--bd);background:rgba(10,14,22,.7)}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{width:30px;height:30px;border-radius:7px;
+        background:linear-gradient(135deg,var(--navy),#2350a8);
+        display:flex;align-items:center;justify-content:center;
+        font-weight:800;color:#fff;font-size:15px;letter-spacing:-.5px}
+  .brand h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  .brand .sub{font-size:11px;color:var(--fg3);margin-top:1px}
+  .spacer{flex:1}
+  .rec{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fg3);
+       font-variant-numeric:tabular-nums}
+  .rec .dot{width:9px;height:9px;border-radius:50%;background:var(--red);
+       box-shadow:0 0 0 0 rgba(255,107,107,.6);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,107,107,.55)}
+       70%{box-shadow:0 0 0 7px rgba(255,107,107,0)}100%{box-shadow:0 0 0 0 rgba(255,107,107,0)}}
+
+  /* ── Rail strip ──────────────────────────────────────── */
+  .rail{display:flex;align-items:center;gap:0;padding:14px 26px 6px;
+        border-bottom:1px solid var(--bd)}
+  .node{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:9px;
+        border:1px solid var(--bd);background:var(--panel);transition:.4s;min-width:210px}
+  .node.active{border-color:var(--navy);background:var(--navy-soft);
+        box-shadow:0 0 0 1px var(--navy) inset}
+  .node .flag{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;
+        justify-content:center;font-size:15px;background:var(--panel2);border:1px solid var(--bd2)}
+  .node .nm{font-size:13px;font-weight:600}
+  .node .bic{font-size:11px;color:var(--fg3);font-family:var(--mono)}
+  .lane{flex:1;height:2px;background:linear-gradient(90deg,var(--bd),var(--bd2),var(--bd));
+        position:relative;margin:0 6px}
+  .lane .pulse{position:absolute;top:-4px;width:10px;height:10px;border-radius:50%;
+        background:var(--gold);box-shadow:0 0 12px var(--gold);left:0;opacity:0}
+  .lane.run .pulse{animation:travel 2.2s linear infinite;opacity:1}
+  @keyframes travel{0%{left:0}100%{left:100%}}
+  .lane .lbl{position:absolute;top:-26px;left:50%;transform:translateX(-50%);
+        font-size:10px;color:var(--fg3);white-space:nowrap;letter-spacing:.4px}
+
+  /* ── Stage ───────────────────────────────────────────── */
+  .stage{flex:1;position:relative;overflow:hidden}
+  #viewport{position:absolute;inset:0;padding:26px 30px;display:flex;
+        align-items:stretch;justify-content:center;gap:22px}
+  .vp-enter{animation:fade .5s ease both}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  /* generic card */
+  .card{background:var(--panel);border:1px solid var(--bd);border-radius:12px;
+        display:flex;flex-direction:column;min-width:0}
+  .card .ch{padding:11px 16px;border-bottom:1px solid var(--bd);display:flex;
+        align-items:center;gap:9px;font-size:11px;letter-spacing:.6px;color:var(--fg3);
+        text-transform:uppercase;font-weight:600}
+  .card .cb{padding:16px;overflow:auto}
+
+  .tag{font-family:var(--mono);font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px}
+  .tag.ax{color:var(--axiom);background:var(--axiom-soft)}
+  .tag.sw{color:var(--swift);background:var(--swift-soft)}
+  .chip{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+  .chip.ax{color:var(--axiom);background:var(--axiom-soft);border:1px solid rgba(54,211,154,.3)}
+  .chip.sw{color:var(--swift);background:var(--swift-soft);border:1px solid rgba(90,169,255,.3)}
+
+  /* composer form rows */
+  .frow{display:flex;align-items:baseline;gap:9px;padding:7px 0;
+        border-bottom:1px dashed rgba(255,255,255,.05);animation:reveal .5s both}
+  .frow .ft{font-family:var(--mono);font-size:10px;color:var(--navy);min-width:42px;font-weight:700}
+  .frow .fl{font-size:10px;color:var(--fg3);min-width:96px}
+  .frow .fv{font-size:13px;color:var(--fg);font-family:var(--mono);flex:1}
+  .frow.hl{background:linear-gradient(90deg,var(--navy-soft),transparent);
+        margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px}
+  @keyframes reveal{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+
+  /* swift preview */
+  pre.swift{margin:0;font-family:var(--mono);font-size:11.5px;line-height:1.5;
+        color:var(--fg);white-space:pre;tab-size:2}
+  pre.swift .k{color:var(--navy);font-weight:700}
+  pre.swift .x{color:var(--swift)}
+  pre.swift .hl{background:var(--swift-soft);border-radius:3px;
+        box-shadow:0 0 0 3px var(--swift-soft)}
+  pre.swift .ln{display:block;animation:reveal .4s both}
+
+  .seg{display:inline-flex;border:1px solid var(--bd2);border-radius:7px;overflow:hidden}
+  .seg div{padding:5px 12px;font-size:11px;color:var(--fg2);cursor:default;font-weight:600}
+  .seg div.on{background:var(--navy);color:#fff}
+
+  /* settlement */
+  .settle{display:flex;flex-direction:column;align-items:center;justify-content:center;
+        gap:26px;width:100%;max-width:720px}
+  .witness{display:flex;gap:16px}
+  .wdot{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .wdot .c{width:54px;height:54px;border-radius:50%;border:2px solid var(--bd2);
+        background:var(--panel2);display:flex;align-items:center;justify-content:center;
+        font-size:20px;color:var(--fg3);transition:.4s}
+  .wdot.sig .c{border-color:var(--axiom);background:var(--axiom-soft);color:var(--axiom);
+        box-shadow:0 0 18px rgba(54,211,154,.35)}
+  .wdot .l{font-size:11px;color:var(--fg3);font-family:var(--mono)}
+  .wdot.sig .l{color:var(--axiom)}
+  .stepline{display:flex;align-items:center;gap:14px;font-size:13px;color:var(--fg2)}
+  .stepline .b{padding:8px 16px;border-radius:9px;border:1px solid var(--bd);
+        background:var(--panel);display:flex;align-items:center;gap:9px}
+  .stepline .b.done{border-color:var(--axiom);background:var(--axiom-soft);color:var(--axiom)}
+  .arrow{color:var(--fg3)}
+
+  /* certified slip */
+  .slip{width:560px;max-width:92%;background:linear-gradient(180deg,#0f1626,#0c121e);
+        border:1px solid var(--bd2);border-radius:14px;overflow:hidden;
+        box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .slip .top{padding:14px 20px;border-bottom:1px solid var(--bd);
+        display:flex;align-items:center;justify-content:space-between;
+        background:linear-gradient(90deg,var(--navy-soft),transparent)}
+  .slip .top .t{font-size:13px;font-weight:700;letter-spacing:.4px}
+  .slip .top .s{font-size:10px;color:var(--fg3)}
+  .slip .body{padding:16px 20px}
+  .slip pre{margin:0 0 14px}
+  .proof{border-top:1px dashed var(--bd2);padding-top:13px;margin-top:4px}
+  .proof .h{font-size:10px;letter-spacing:.7px;color:var(--gold);font-weight:700;margin-bottom:9px}
+  .proof .r{display:flex;justify-content:space-between;gap:12px;font-size:11px;
+        font-family:var(--mono);padding:3px 0;color:var(--fg2)}
+  .proof .r b{color:var(--fg)}
+  .valid{margin-top:12px;display:flex;align-items:center;gap:10px;padding:11px 14px;
+        border-radius:9px;border:1px solid rgba(54,211,154,.4);background:var(--axiom-soft)}
+  .valid .ic{width:26px;height:26px;border-radius:50%;background:var(--axiom);color:#04130c;
+        display:flex;align-items:center;justify-content:center;font-weight:800}
+  .valid .tx{font-size:13px;font-weight:700;color:var(--axiom)}
+  .valid .sub{font-size:10px;color:var(--fg2)}
+
+  /* title cards */
+  .title{display:flex;flex-direction:column;align-items:center;justify-content:center;
+        text-align:center;gap:18px;width:100%;max-width:820px}
+  .title h2{font-size:34px;margin:0;font-weight:700;letter-spacing:-.5px;line-height:1.15}
+  .title p{font-size:16px;color:var(--fg2);margin:0;max-width:640px;line-height:1.5}
+  .title .badges{display:flex;gap:10px;margin-top:6px}
+  .title .badges span{font-size:12px;padding:6px 14px;border-radius:22px;border:1px solid var(--bd2)}
+  .grad{background:linear-gradient(90deg,var(--axiom),var(--swift));
+        -webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* maker-checker */
+  .mc{display:flex;gap:18px}
+  .mc .p{flex:1;border:1px solid var(--bd);border-radius:11px;padding:18px;background:var(--panel)}
+  .mc .p .role{font-size:11px;color:var(--fg3);letter-spacing:.5px;text-transform:uppercase}
+  .mc .p .nm{font-size:16px;font-weight:650;margin:5px 0 2px}
+  .mc .p.ok{border-color:var(--axiom);background:var(--axiom-soft)}
+  .mc .p .st{font-size:12px;margin-top:10px;display:flex;align-items:center;gap:7px;color:var(--fg2)}
+  .mc .p.ok .st{color:var(--axiom)}
+
+  /* caption band — TOP, prominent (this is what explains the scene) */
+  .capbar{padding:16px 30px 17px;border-bottom:1px solid var(--bd);
+        background:linear-gradient(180deg,rgba(59,111,214,.12),transparent);
+        border-left:3px solid var(--navy)}
+  .capbar .step{font-size:11px;color:var(--navy);letter-spacing:.6px;font-weight:700;
+        text-transform:uppercase;margin-bottom:6px}
+  .capbar .nar{font-size:19px;color:var(--fg);line-height:1.45;font-weight:500;max-width:1180px}
+  .cap-enter{animation:capfade .45s ease both}
+  @keyframes capfade{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+  footer{padding:14px 26px 16px;border-top:1px solid var(--bd);background:rgba(10,14,22,.8);
+         display:flex;align-items:center;justify-content:center;gap:18px}
+  .controls{display:flex;align-items:center;gap:9px}
+  .controls button{width:40px;height:40px;border-radius:9px;border:1px solid var(--bd2);
+        background:var(--panel);color:var(--fg);font-size:15px;cursor:pointer;transition:.15s}
+  .controls button:hover{border-color:var(--navy);background:var(--navy-soft)}
+  .controls button.play{width:48px;background:var(--navy);border-color:var(--navy);color:#fff}
+  .dots{display:flex;gap:6px;margin-left:8px}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--bd2);cursor:pointer;transition:.2s}
+  .dots i.on{background:var(--navy);transform:scale(1.3)}
+  .dots i.seen{background:var(--fg3)}
+  .progress{position:absolute;top:0;left:0;height:2px;background:var(--gold);width:0;transition:width .1s linear}
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="mark">U</div>
+      <div>
+        <h1>UNCLE&nbsp;SAM <span style="color:var(--fg3);font-weight:400">· Settlement Anchor Mediator</span></h1>
+        <div class="sub">SWIFT&nbsp;⇄&nbsp;AXIOM correspondent settlement — interactive walkthrough</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="rec"><span class="dot"></span> DEMO REEL</div>
+  </header>
+
+  <div class="rail">
+    <div class="node" id="nodeA">
+      <div class="flag">🇺🇸</div>
+      <div><div class="nm">Atlantic Union Bank</div><div class="bic">BANKUS33</div></div>
+    </div>
+    <div class="lane" id="lane"><div class="lbl" id="laneLbl"></div><div class="pulse"></div></div>
+    <div class="node" id="nodeB">
+      <div class="flag">🇭🇰</div>
+      <div><div class="nm">Pacific Rim Bank</div><div class="bic">RECVHKHH</div></div>
+    </div>
+  </div>
+
+  <div class="capbar" id="capbar">
+    <div class="step" id="stepLbl"></div>
+    <div class="nar" id="nar"></div>
+  </div>
+
+  <div class="stage">
+    <div class="progress" id="prog"></div>
+    <div id="viewport"></div>
+  </div>
+
+  <footer>
+    <div class="controls">
+      <button id="prev" title="Previous (←)">⏮</button>
+      <button class="play" id="play" title="Play / Pause (space)">▶</button>
+      <button id="next" title="Next (→)">⏭</button>
+      <button id="restart" title="Restart">↺</button>
+      <div class="dots" id="dots"></div>
+    </div>
+  </footer>
+
+<script>
+// ── Faithful SWIFT messages (match SwiftMT103.render / SwiftPacs008.render) ──
+const MT103 =
+`<span class="k">{1:</span>F01BANKUS33XXX0000000000<span class="k">}</span>
+<span class="k">{2:</span>I103RECVHKHHXXXN<span class="k">}</span>
+<span class="k">{4:</span>
+<span class="k">:20:</span>UW-260614-AB12CD
+<span class="k">:23B:</span>CRED
+<span class="k">:32A:</span>260614USD1000000,00
+<span class="k">:50K:</span>/12345678901234567890
+ACME CORPORATION LTD
+<span class="k">:52A:</span>BANKUS33
+<span class="k">:57A:</span>RECVHKHH
+<span class="k">:59:</span>/HK87654321
+BETA HOLDINGS LIMITED
+<span class="k">:70:</span>INVOICE 4471 SETTLEMENT
+<span class="k">:71A:</span>SHA
+<span class="k">-}</span>`;
+
+const PACS =
+`<span class="x">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="k">&lt;Document</span> xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08"<span class="k">&gt;</span>
+  &lt;FIToFICstmrCdtTrf&gt;
+    &lt;GrpHdr&gt;
+      &lt;MsgId&gt;MSG-20260614-1A2B3C4D&lt;/MsgId&gt;
+      &lt;NbOfTxs&gt;1&lt;/NbOfTxs&gt;
+      &lt;SttlmInf&gt;&lt;SttlmMtd&gt;CLRS&lt;/SttlmMtd&gt;&lt;/SttlmInf&gt;
+    &lt;/GrpHdr&gt;
+    &lt;CdtTrfTxInf&gt;
+      &lt;PmtId&gt;&lt;EndToEndId&gt;UW-260614-AB12CD&lt;/EndToEndId&gt;&lt;/PmtId&gt;
+      &lt;IntrBkSttlmAmt Ccy="USD"&gt;1000000.00&lt;/IntrBkSttlmAmt&gt;
+      &lt;IntrBkSttlmDt&gt;2026-06-14&lt;/IntrBkSttlmDt&gt;
+      &lt;ChrgBr&gt;SHAR&lt;/ChrgBr&gt;
+      &lt;Dbtr&gt;&lt;Nm&gt;ACME CORPORATION LTD&lt;/Nm&gt;&lt;/Dbtr&gt;
+      &lt;DbtrAgt&gt;&lt;FinInstnId&gt;&lt;BICFI&gt;BANKUS33&lt;/BICFI&gt;&lt;/FinInstnId&gt;&lt;/DbtrAgt&gt;
+      &lt;CdtrAgt&gt;&lt;FinInstnId&gt;&lt;BICFI&gt;RECVHKHH&lt;/BICFI&gt;&lt;/FinInstnId&gt;&lt;/CdtrAgt&gt;
+      &lt;Cdtr&gt;&lt;Nm&gt;BETA HOLDINGS LIMITED&lt;/Nm&gt;&lt;/Cdtr&gt;
+      &lt;RmtInf&gt;&lt;Ustrd&gt;INVOICE 4471 SETTLEMENT&lt;/Ustrd&gt;&lt;/RmtInf&gt;
+    &lt;/CdtTrfTxInf&gt;
+  &lt;/FIToFICstmrCdtTrf&gt;
+&lt;/Document&gt;`;
+
+function swiftPre(txt, stagger){
+  const lines = txt.split('\n');
+  return '<pre class="swift">'+lines.map((l,i)=>
+    `<span class="ln" style="animation-delay:${stagger?i*0.05:0}s">${l||' '}</span>`).join('\n')+'</pre>';
+}
+
+// AXIOM-anchored vs SWIFT-only field tagging (mirrors the app's tags)
+const FIELDS = [
+  ['ax',':57A:','Beneficiary bank','RECVHKHH'],
+  ['ax',':32A:','Settled amount','USD 1,000,000.00'],
+  ['ax',':50K:','Ordering customer','ACME CORPORATION LTD'],
+  ['ax',':59:','Beneficiary','BETA HOLDINGS LIMITED'],
+  ['ax',':70:','Remittance','INVOICE 4471 SETTLEMENT'],
+  ['ax',':20:','Reference','UW-260614-AB12CD'],
+  ['sw',':71A:','Charge bearer','SHA'],
+];
+
+function composer(n, fmt, hl){
+  const rows = FIELDS.slice(0,n).map(f=>{
+    const on = hl && (f[1]===':59:'||f[1]===':57A:');
+    return `<div class="frow ${on?'hl':''}">
+      <span class="ft">${f[1]}</span>
+      <span class="tag ${f[0]}">${f[0]==='ax'?'AXIOM':'SWIFT'}</span>
+      <span class="fl">${f[2]}</span>
+      <span class="fv">${f[3]}</span></div>`;
+  }).join('');
+  return `<div class="card" style="flex:1;max-width:560px">
+      <div class="ch">📝 Create message · maker composing</div>
+      <div class="cb">${rows}
+      <div style="margin-top:14px;font-size:11px;color:var(--fg3)">
+        <span class="tag ax">AXIOM</span> drives the rail (value, finality) ·
+        <span class="tag sw">SWIFT</span> shapes the envelope only</div>
+      </div></div>
+    <div class="card" style="flex:1;max-width:560px">
+      <div class="ch" style="justify-content:space-between">
+        <span>Live ${fmt==='mt103'?'MT103':'pacs.008'} preview · every keystroke</span>
+        <span class="seg"><div class="${fmt==='pacs008'?'on':''}">pacs.008</div><div class="${fmt==='mt103'?'on':''}">MT103</div></span>
+      </div>
+      <div class="cb">${swiftPre(fmt==='mt103'?MT103:PACS, true)}</div>
+    </div>`;
+}
+
+const PROOF = `<div class="proof">
+    <div class="h">◆ AXIOM PROOF — anchored, Core-attested</div>
+    <div class="r"><span>Transaction id</span><b>7f3a9c2e…b40d</b></div>
+    <div class="r"><span>Core id</span><b>11d5268d…a817</b></div>
+    <div class="r"><span>Witnesses</span><b>k = 5 · validator-signed</b></div>
+    <div class="r"><span>Notarised</span><b>Nabla · tick 4 481 902</b></div>
+    <div class="valid"><div class="ic">✓</div>
+      <div><div class="tx">VALID — verified by Core (CL12)</div>
+      <div class="sub">Offline · no network · no trusted third party</div></div></div>
+  </div>`;
+
+function slip(showProof, verifyMode){
+  return `<div class="slip">
+    <div class="top"><div><div class="t">CERTIFIED SETTLEMENT SLIP</div>
+      <div class="s">Atlantic Union Bank → Pacific Rim Bank · ref UW-260614-AB12CD</div></div>
+      <div class="chip sw">pacs.008</div></div>
+    <div class="body">${swiftPre(PACS,false)}${showProof?PROOF:''}</div></div>`;
+}
+
+// import (reverse) — left pasted MT103, right AXIOM wire materialising
+function importView(n){
+  const rows = FIELDS.filter(f=>f[0]==='ax').slice(0,n).map(f=>
+    `<div class="frow hl"><span class="ft">${f[1]}</span>
+      <span class="tag ax">AXIOM</span><span class="fl">${f[2]}</span>
+      <span class="fv">${f[3]}</span></div>`).join('');
+  return `<div class="card" style="flex:1;max-width:540px">
+      <div class="ch">📥 Import SWIFT · pasted inbound MT103</div>
+      <div class="cb">${swiftPre(MT103,false)}</div></div>
+    <div class="card" style="flex:1;max-width:540px">
+      <div class="ch" style="justify-content:space-between">
+        <span>Parsed → AXIOM transaction</span>
+        ${n>=4?'<span class="chip ax">READY TO SEND</span>':'<span class="chip sw">parsing…</span>'}</div>
+      <div class="cb">${rows || '<div style="color:var(--fg3);font-size:12px">Paste a SWIFT message…</div>'}
+      ${n>=4?'<div style="margin-top:14px;font-size:11px;color:var(--axiom)">✓ tags mapped into a signable AXIOM wire — SWIFT in, AXIOM out</div>':''}</div></div>`;
+}
+
+// ── Steps ────────────────────────────────────────────────
+const steps = [
+  { lbl:'Intro', dur:4200, rail:'A', lane:'',
+    nar:'Two banks. One AXIOM rail. Native SWIFT on both ends — UNCLE Sam sits at the edge and translates.',
+    view:()=>`<div class="title"><h2>Send <span class="grad">AXIOM</span> and <span class="grad">SWIFT</span><br>at the same time</h2>
+      <p>Every bank already speaks SWIFT. UNCLE Sam lets them settle on AXIOM without leaving the message formats they know.</p>
+      <div class="badges"><span class="chip ax">AXIOM&nbsp;rail · ~3&nbsp;min finality</span>
+      <span class="chip sw">pacs.008 · MT103</span></div></div>` },
+
+  { lbl:'Compose · 1 of 2', dur:4200, rail:'A', lane:'',
+    nar:'Atlantic Union Bank composes a USD 1,000,000 payment to Pacific Rim Bank. The maker just fills the form.',
+    view:()=>composer(3,'pacs008',false) },
+
+  { lbl:'AXIOM → SWIFT', dur:4800, rail:'A', lane:'',
+    nar:'As the maker types, UNCLE Sam writes the ISO 20022 pacs.008 message live — field by field, no separate SWIFT step.',
+    view:()=>composer(7,'pacs008',true) },
+
+  { lbl:'Same data · MT103', dur:4600, rail:'A', lane:'',
+    nar:'Same payment, legacy dialect. One toggle renders it as an MT103 FIN message for banks still on the FIN pipeline.',
+    view:()=>composer(7,'mt103',true) },
+
+  { lbl:'Maker / Checker', dur:4400, rail:'A', lane:'',
+    nar:'The maker submits; a second operator authorizes. Separation of duty — exactly the control banks run on SWIFT today.',
+    view:()=>`<div class="mc" style="width:100%;max-width:760px;align-self:center">
+      <div class="p ok"><div class="role">Maker</div><div class="nm">J. Okafor</div>
+        <div style="font-size:12px;color:var(--fg3)">Treasury desk · BANKUS33</div>
+        <div class="st">✓ Drafted &amp; submitted</div></div>
+      <div class="p ok"><div class="role">Checker</div><div class="nm">M. Devlin</div>
+        <div style="font-size:12px;color:var(--fg3)">Authorising officer · BANKUS33</div>
+        <div class="st">✓ Authorized — release to gateway</div></div></div>` },
+
+  { lbl:'Settlement on AXIOM', dur:5200, rail:'travel', lane:'UNCLE carrier · signed transfer in flight',
+    nar:'UNCLE carries the signed transfer A → B. Five validators witness it; Nabla notarises. Finality ≈ 3 minutes.',
+    view:()=>`<div class="settle">
+      <div class="witness">${['α','β','γ','δ','ε'].map((v,i)=>
+        `<div class="wdot sig" style="animation-delay:${i*0.25}s"><div class="c">${v}</div><div class="l">validator ${i+1}</div></div>`).join('')}</div>
+      <div class="stepline">
+        <div class="b done">✓ UNCLE dispatch</div><span class="arrow">→</span>
+        <div class="b done">✓ k=5 witnessed</div><span class="arrow">→</span>
+        <div class="b done">✓ Nabla notarised</div><span class="arrow">→</span>
+        <div class="b done">⚡ final ≈ 3 min</div></div></div>` },
+
+  { lbl:'Certified slip', dur:5400, rail:'B', lane:'',
+    nar:'Out comes the certified slip: the SWIFT message plus an AXIOM proof. A SWIFT TT slip you can verify cryptographically.',
+    view:()=>slip(true,false) },
+
+  { lbl:'The other direction', dur:4000, rail:'B', lane:'',
+    nar:'Now reverse it. Pacific Rim Bank already lives in SWIFT — it holds an inbound MT103 from its existing pipeline.',
+    view:()=>importView(0) },
+
+  { lbl:'SWIFT → AXIOM', dur:5200, rail:'B', lane:'',
+    nar:'Paste it into UNCLE Sam. The tags parse straight into a signable AXIOM transaction. SWIFT in, AXIOM out.',
+    view:()=>importView(5) },
+
+  { lbl:'Verify · Core-attested', dur:4800, rail:'B', lane:'',
+    nar:'Anyone holding the slip verifies it against Core: VALID, Core-attested (CL12). No network, no trusted third party.',
+    view:()=>slip(true,true) },
+
+  { lbl:'Both ways, settled', dur:5600, rail:'both', lane:'',
+    nar:'AXIOM out, SWIFT out. SWIFT in, AXIOM in. Correspondent value settled in minutes — and provable forever.',
+    view:()=>`<div class="title"><h2>One edge.<br><span class="grad">Both directions.</span></h2>
+      <p>UNCLE Sam bridges every bank's SWIFT desk to the AXIOM rail — bidirectionally — with a cryptographic anchor on every transfer.</p>
+      <div class="badges"><span class="chip sw">AXIOM → MT103 / pacs.008</span>
+      <span class="chip ax">MT103 / pacs.008 → AXIOM</span></div></div>` },
+];
+
+// ── Player ───────────────────────────────────────────────
+let idx=0, playing=false, timer=null, progT=null;
+const vp=document.getElementById('viewport');
+const dotsEl=document.getElementById('dots');
+steps.forEach((s,i)=>{const d=document.createElement('i');d.onclick=()=>go(i);dotsEl.appendChild(d);});
+
+function setRail(r){
+  document.getElementById('nodeA').classList.toggle('active', r==='A'||r==='both');
+  document.getElementById('nodeB').classList.toggle('active', r==='B'||r==='both');
+  const lane=document.getElementById('lane');
+  lane.classList.toggle('run', r==='travel');
+  document.getElementById('laneLbl').textContent = steps[idx].lane||'';
+}
+
+function render(){
+  const s=steps[idx];
+  vp.innerHTML=s.view();
+  vp.classList.remove('vp-enter'); void vp.offsetWidth; vp.classList.add('vp-enter');
+  document.getElementById('stepLbl').textContent=`Step ${idx+1} / ${steps.length} · ${s.lbl}`;
+  document.getElementById('nar').textContent=s.nar;
+  const cb=document.getElementById('capbar');
+  cb.classList.remove('cap-enter'); void cb.offsetWidth; cb.classList.add('cap-enter');
+  setRail(s.rail);
+  [...dotsEl.children].forEach((d,i)=>{d.className=i===idx?'on':(i<idx?'seen':'');});
+  startProgress(s.dur);
+}
+
+function startProgress(dur){
+  const p=document.getElementById('prog'); p.style.transition='none'; p.style.width='0';
+  clearInterval(progT);
+  if(!playing){return;}
+  let t0=Date.now();
+  progT=setInterval(()=>{
+    const f=Math.min(1,(Date.now()-t0)/dur);
+    p.style.transition='width .1s linear'; p.style.width=(f*100)+'%';
+    if(f>=1)clearInterval(progT);
+  },60);
+}
+
+function schedule(){ clearTimeout(timer); if(playing){ timer=setTimeout(next, steps[idx].dur); } }
+function go(i){ idx=(i+steps.length)%steps.length; render(); schedule(); }
+function next(){ if(idx<steps.length-1) go(idx+1); else { go(0); } }
+function prev(){ go(idx-1); }
+function setPlay(p){ playing=p; document.getElementById('play').textContent=p?'❚❚':'▶';
+  if(p){schedule();startProgress(steps[idx].dur);} else {clearTimeout(timer);clearInterval(progT);} }
+
+document.getElementById('play').onclick=()=>setPlay(!playing);
+document.getElementById('next').onclick=()=>{setPlay(false);next();};
+document.getElementById('prev').onclick=()=>{setPlay(false);prev();};
+document.getElementById('restart').onclick=()=>{idx=0;render();setPlay(true);};
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){e.preventDefault();setPlay(!playing);}
+  if(e.code==='ArrowRight'){setPlay(false);next();}
+  if(e.code==='ArrowLeft'){setPlay(false);prev();}
+});
+
+render();
+setPlay(true);   // auto-play on load
+</script>
+</body>
+</html>

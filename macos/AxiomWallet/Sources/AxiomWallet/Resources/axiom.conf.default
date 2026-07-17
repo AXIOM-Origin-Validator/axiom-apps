@@ -1,0 +1,16 @@
+# AXIOM SDK configuration
+#
+# Seeded by AxiomWallet on first launch. The maildir line is rewritten
+# to the real path at seed time (it's per-install). The smtp_host /
+# pop3_host lines below are picked up by AxiomKiddo as defaults for
+# new mail accounts — Kiddo's per-account override still wins.
+#
+# Once this file exists, AxiomWallet does not overwrite it.
+
+# maildir is set by AxiomWallet to <app_dir>/maildir at seed time.
+
+# Transport relay defaults (consumed by AxiomKiddo).
+smtp_host = axiom-dev.mooo.com
+smtp_port = 2525
+pop3_host = axiom-dev.mooo.com
+pop3_port = 2527

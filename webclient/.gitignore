@@ -1,0 +1,6 @@
+# Build outputs — produced by ./build.sh, never committed.
+# Clients receive these as finished artifacts (single-file or HTTP folder);
+# the repo carries only the source that builds them.
+pkg/
+pkg-nomod/
+dist/
