@@ -11,8 +11,8 @@
 // version — the app identifies itself.
 enum AxiomVersion {
     /// VERSION.toml [app] wallet — this app's own version.
-    static let app = "2.23.0"
+    static let app = "2.37.0"
 
     /// VERSION.toml [workspace] crate — shared Rust crate version.
-    static let crate = "3.3.0"
+    static let crate = "3.7.1"
 }

@@ -164,8 +164,8 @@ final class OnboardingState: ObservableObject {
     }
 }
 
-/// Shared dev passcode — same literal AxiomKiddo's SettingsView,
-/// the CarrierPreferences picker, and AddPairView use.
+/// Shared dev passcode — same literal AxiomKiddo's SettingsView
+/// and AddPairView use.
 private let kOnboardingDevPasscode = "fatmama approve axiom"
 
 /// Top-level onboarding container — owns the state, dispatches to
@@ -430,9 +430,8 @@ struct IdentityStep: View {
     }
 }
 
-/// Dev-passcode sheet for onboarding (third instance, same
-/// shape as CarrierPreferences and AddPairView — Swift doesn't
-/// share private views across files).
+/// Dev-passcode sheet for onboarding (same shape as AddPairView's —
+/// Swift doesn't share private views across files).
 private struct OnboardingDevPasscodeSheet: View {
     let onSubmit: (String) -> Void
     @State private var entered: String = ""
@@ -898,7 +897,10 @@ struct BackupStep: View {
 // confusing "didn't receive validator cheques" error.
 //
 // For DEV-CLASS wallets (@axiom.internal — they run against a local
-// FATMAMA env) this step auto-provisions Kiddo: it fires the
+// FATMAMA env) this step auto-provisions Kiddo against FATMAMA. For any
+// other address FATMAMA is NOT involved and must not be named in the UI:
+// it refuses non-cluster domains outright (`is_cluster_recipient` → 550).
+// It fires the
 // `axiomkiddo://provision` URL, Kiddo creates a `.axiomDev` account
 // bound to this wallet, and the gate flips to ready hands-free. The
 // user sees a brief "Setting up AxiomKiddo…" then a green check.
@@ -933,6 +935,12 @@ struct KiddoSetupStep: View {
     @State private var autoProvisionFired = false
     @State private var autoProvisionGaveUp = false
 
+    /// The round trip that replaces "Kiddo is running and has an account" as
+    /// the gate (docs/AXIOM_DESIGN_CarrierHandoff.md §6). An account can exist
+    /// and be completely unreachable; only mail that comes back proves the
+    /// claim in the next step has anywhere to land.
+    @StateObject private var probe = MailRoundTripProbe()
+
     init(state: OnboardingState) {
         self.state = state
         // Match key is the email the user typed in step 1. That's
@@ -949,10 +957,20 @@ struct KiddoSetupStep: View {
     /// window. Mirrors `maybeAutoProvision`'s gate so the "Setting up
     /// AxiomKiddo…" spinner shows for any wallet that actually fired
     /// the provision URL, not only `@axiom.internal`.
+    /// Continue unlocks on EVIDENCE, not configuration.
+    ///
+    /// A pass recorded on an earlier run counts: the user may have proven this
+    /// address weeks ago on another wallet, and making them re-prove it here
+    /// would be ceremony. What does not count is an account that merely
+    /// exists — that was the old gate, and it is what let a claim fail two
+    /// steps later with a 60-second timeout and no explanation.
+    private var mailProven: Bool {
+        if case .passed = probe.state { return true }
+        return MailCheckRecord.hasPassed(walletEmail: state.effectiveEmail)
+    }
+
     private var isAutoProvisioning: Bool {
-        let provisionAllowed = state.isDevEmail
-            || KiddoPreflight.smtpHostIsDevSafe(appDir: defaultAppDir())
-        guard provisionAllowed, autoProvisionFired, !autoProvisionGaveUp else {
+        guard state.isDevEmail, autoProvisionFired, !autoProvisionGaveUp else {
             return false
         }
         if case .ready = watcher.state { return false }
@@ -963,18 +981,39 @@ struct KiddoSetupStep: View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
             stepHeader(
                 step: 5,
-                title: "Set up AxiomKiddo",
-                subtitle: "AxiomKiddo is a small companion app that ships your wallet's outbound emails and delivers incoming cheques. Without it, the genesis claim in the next step has nowhere to send the broadcast and will time out."
+                title: "How this Mac sends and collects mail",
+                subtitle: "AXIOM moves money as messages. Requests go out to validators; their replies — and the cheques that carry your money — come back the same way. Set up both directions once."
             )
 
-            statusPanel
+            OutgoingCapabilityRow(isDevWallet: state.isDevEmail)
+
+            // Incoming is the half that needs configuring, and the accounts
+            // live in AxiomKiddo — this wallet reads Kiddo's account list and
+            // hands off to it, and never holds a mail password itself. Two
+            // stores for one credential is how they drift.
+            MailSetupRow(title: "Incoming",
+                         what: "where replies and cheques land",
+                         trailing: "required") {
+                statusPanel
+                    .padding(DesignTokens.Spacing.sm)
+            }
+
+            MailProbePanel(
+                state: probe.state,
+                canRun: watcher.state == .ready,
+                onRun: {
+                    probe.start(
+                        walletDir: defaultWalletDir() + "/" + state.pairName + "-normal",
+                        walletEmail: state.effectiveEmail)
+                }
+            )
 
             HStack {
                 Button("Back") { state.retreat() }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                 Spacer()
-                if case .ready = watcher.state {
+                if mailProven {
                     Button("Continue") { state.advance() }
                         .buttonStyle(.borderedProminent)
                         .tint(DesignTokens.brandPrimary)
@@ -1029,9 +1068,19 @@ struct KiddoSetupStep: View {
         // *.internal, …), auto-provision is safe regardless of email
         // domain. Real-ISP hosts still fall through to manual
         // configuration — Kiddo can't synthesise their passwords.
-        let provisionAllowed = state.isDevEmail
-            || KiddoPreflight.smtpHostIsDevSafe(appDir: defaultAppDir())
-        guard provisionAllowed, !autoProvisionFired else { return }
+        // RULED 2026-09-12 (the owner): "autoprovision should be only work for
+        // fatmama/dev account". The host check that used to widen this is
+        // GONE. It was the "Bug B" fix — a real address onboarding against a
+        // dev env got no Kiddo account, so the gate was broadened to the SMTP
+        // host looking dev-shaped. But that premise does not hold: FATMAMA
+        // refuses any non-cluster domain (`is_cluster_recipient` → 550), so
+        // the account it provisioned could never register and therefore could
+        // never receive. It replaced "no account" with "an account that looks
+        // configured and silently cannot work", which is worse.
+        //
+        // A real address configures its own provider in AxiomKiddo. Only the
+        // ADDRESS decides — never the host, never the account kind.
+        guard state.isDevEmail, !autoProvisionFired else { return }
         switch watcher.state {
         case .ready, .notInstalled:
             return
@@ -1073,7 +1122,15 @@ struct KiddoSetupStep: View {
                     Text("Setting up AxiomKiddo…")
                         .font(DesignTokens.Typography.bodyStrong)
                 }
-                Text("Configuring a mail-transport account for \(state.effectiveEmail) against your local FATMAMA env. This is automatic — no setup needed.")
+                // FATMAMA is the DEVELOPER relay and it only accepts
+                // @axiom / @axiom.internal — so naming it to someone setting
+                // up a real address describes a thing that is not happening
+                // and cannot happen (the owner, 2026-09-12: "fatmama IS ONLY for
+                // dev account"). Branch on the ADDRESS, which is what decides
+                // it, never on the host or the account kind.
+                Text(state.isDevEmail
+                     ? "Setting up a developer mail account for \(state.effectiveEmail) with FATMAMA, the dev relay. Automatic — nothing to configure."
+                     : "Setting up AxiomKiddo to carry mail for \(state.effectiveEmail). If your mail provider needs a password, you'll add it in AxiomKiddo.")
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .lineSpacing(2)
@@ -1195,7 +1252,13 @@ struct KiddoSetupStep: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                     .help("Use this if you're relying on a different mail transport (dev FATMAMA env, sendmail, etc.).")
-                Button("Open Kiddo Settings") { KiddoPreflight.openKiddoForSettings() }
+                Button("Set up in AxiomKiddo") {
+                    KiddoPreflight.openKiddoForSetup(
+                        walletEmail: state.effectiveEmail,
+                        walletDir: defaultWalletDir() + "/" + state.pairName + "-normal",
+                        label: state.pairName
+                    )
+                }
                     .buttonStyle(.borderedProminent)
                     .tint(DesignTokens.brandPrimary)
                     .controlSize(.large)
@@ -1235,6 +1298,13 @@ struct GenesisStep: View {
                 subtitle: "AXIOM gives every new wallet 1 AXC from the genesis pool. This is a one-time claim — the network witnesses it, Nabla registers it, and the AXC lands in your Normal wallet."
             )
 
+            // The carrier question comes BEFORE the claim (design §4.8): the
+            // user picks what this app will run; the SDK is told; the claim
+            // only goes to validators reachable that way.
+            if phase == .idle || phase == .failed {
+                CarrierQuestionCard()
+            }
+
             statusPanel
 
             HStack {
@@ -1253,12 +1323,13 @@ struct GenesisStep: View {
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                     Button(phase == .failed ? "Try again" : "Claim 1 AXC") {
+                        CarrierChoice.declareToSdk()
                         startClaim()
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(DesignTokens.brandPrimary)
                     .controlSize(.large)
-                    .disabled(state.normalWallet == nil)
+                    .disabled(state.normalWallet == nil || !CarrierChoice.hasAnswer)
                 } else {
                     // broadcasting — Cancel is the only way out while a
                     // claim runs (the claim has no timeout, so a stuck

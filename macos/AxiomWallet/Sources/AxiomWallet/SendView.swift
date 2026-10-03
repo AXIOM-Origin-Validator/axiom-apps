@@ -695,7 +695,7 @@ struct SendView: View {
             showSignSheet = true
             return
         }
-        kiddoGate.check(email: wallet.email()) {
+        kiddoGate.check(email: wallet.email(), walletDir: session.activePair.map { "\(defaultWalletDir())/\($0.name)-normal" }) {
             // Kiddo ready — continue with the existing dispatch.
             if let warning = wallet.checkZkpTierWarning(to: recipient) {
                 tierWarning = warning

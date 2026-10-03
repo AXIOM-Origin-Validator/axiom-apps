@@ -1,4 +1,5 @@
 import SwiftUI
+import KiddoPolicy
 import AppKit
 
 // =================================================================
@@ -54,6 +55,21 @@ struct SettingsView: View {
         .sheet(isPresented: $showKuaikuai) {
             KuaikuaiOverlay(dismiss: { showKuaikuai = false })
         }
+        // `axiomkiddo://prepare` asks for a specific account to be selected,
+        // because it just created it from what the wallet handed over. Honour
+        // it once and clear it, so it never fights the user's own clicks.
+        // Checked on appear too: the window may already be open when the URL
+        // arrives, and it may be opened after the request was set.
+        .onAppear { honourFocusRequest() }
+        .onChange(of: store.focusRequest) { honourFocusRequest() }
+    }
+
+    private func honourFocusRequest() {
+        guard let id = store.focusRequest else { return }
+        if store.accounts.contains(where: { $0.id == id }) {
+            selectedId = id
+        }
+        store.focusRequest = nil
     }
 
     private var sidebar: some View {
@@ -131,7 +147,11 @@ struct SettingsView: View {
             // 乖乖 — tiny build label that exists primarily as the
             // tap target. Decorative; click 7× to summon.
             HStack {
-                Text("AXIOM Kiddo · v0.1")
+                // Read from the bundle, never typed here. This line said
+                // "v0.1" while the app shipped 2.15.0 — a hardcoded version
+                // is a claim nobody updates (the owner, 2026-09-12: "it stuck
+                // with v0.1 for a long time already").
+                Text("AXIOM Kiddo · v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
                     .font(KiddoTokens.Typography.micro)
                     .foregroundStyle(.tertiary)
                     .kuaikuaiTapTarget(presenting: $showKuaikuai)
@@ -484,6 +504,13 @@ private struct AccountEditor: View {
     @State private var fatmamaStatus: String?
     @State private var isRegisteringFatmama: Bool = false
 
+    // "Test connection" — the answer to "does this account work?", without
+    // saving and waiting for a background tick.
+    @State private var testResult: ConnectionTestResult?
+    @State private var isTesting: Bool = false
+    @State private var authFailures: Int = 0
+    @State private var showBanWarning: Bool = false
+
     /// Pending transport-directory wipe awaiting confirmation. Set by
     /// the Clean send / Clean receive buttons; cleared on confirm or
     /// cancel. Drives the destructive confirmation dialog.
@@ -541,6 +568,51 @@ private struct AccountEditor: View {
     /// background queue so the UI stays responsive. Surfaces a
     /// transient status line in the Identity section regardless of
     /// outcome — connect failure / non-250 / OK.
+    @ViewBuilder
+    private func legRow(_ name: String, _ r: LegResult) -> some View {
+        HStack(alignment: .top, spacing: KiddoTokens.Spacing.xs) {
+            Image(systemName: r.isOK ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(r.isOK ? KiddoTokens.statusRunningFg : KiddoTokens.statusAttentionFg)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(KiddoTokens.Typography.labelStrong)
+                Text(r.detail)
+                    .font(KiddoTokens.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Runs both legs off the main thread — every step of it can block for
+    /// seconds (DNS, TLS, and the keychain read, which itself can sit waiting
+    /// on an authorisation dialog).
+    private func runConnectionTest() {
+        // Refuse to keep hammering a provider that is already refusing us.
+        // The user can still proceed from the alert; the point is that it
+        // becomes a decision instead of a reflex.
+        if authFailures >= ConnectionTest.warnAfterFailures {
+            showBanWarning = true
+            return
+        }
+        performConnectionTest()
+    }
+
+    private func performConnectionTest() {
+        isTesting = true
+        testResult = nil
+        let account = draft
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = ConnectionTest.run(account: account)
+            AuthFailureCount.record(account.id, result: result)
+            let count = AuthFailureCount.get(account.id)
+            DispatchQueue.main.async {
+                self.testResult = result
+                self.authFailures = count
+                self.isTesting = false
+            }
+        }
+    }
+
     private func registerWithFatmama() {
         let host = draft.smtpHost
         let port = draft.smtpPort
@@ -672,6 +744,9 @@ private struct AccountEditor: View {
         let user    = draft.username
         let pw      = draft.password
         let hasPw   = draft.hasKeychainPassword
+        let inUser  = draft.pop3Username
+        let inPw    = draft.pop3Password
+        let hasInPw = draft.hasPop3KeychainPassword
         let poll    = draft.pop3PollSecs
 
         let preset = (targetKind == .axiomDev)
@@ -684,6 +759,9 @@ private struct AccountEditor: View {
         draft.pop3Host   = preset.pop3Host
         draft.pop3Port   = preset.pop3Port
         draft.pop3UseTLS = preset.pop3UseTLS
+        // Cadence travels with the kind for the same reason the hosts do: the
+        // dev relay tolerates 3 s, a real provider treats it as abuse.
+        draft.pop3PollSecs = preset.pop3PollSecs
 
         draft.label              = label
         draft.walletDir          = dir
@@ -691,7 +769,16 @@ private struct AccountEditor: View {
         draft.username           = user
         draft.password           = pw
         draft.hasKeychainPassword = hasPw
+        draft.pop3Username        = inUser
+        draft.pop3Password        = inPw
+        draft.hasPop3KeychainPassword = hasInPw
         draft.pop3PollSecs       = poll
+        // Retention is NOT preserved across a kind change, and that is
+        // deliberate: the account is becoming a different thing, pointed at
+        // a different mailbox. Carrying `.deleteAll` over from a scratch dev
+        // mailbox would aim the irreversible mode at someone's real inbox.
+        // Take the preset's per-kind default; the user can change it below.
+        draft.retention          = preset.retention
     }
 
     var body: some View {
@@ -749,9 +836,19 @@ private struct AccountEditor: View {
                                 Label("Register with FATMAMA",
                                       systemImage: "paperplane.fill")
                             }
+                            // Gate on the ADDRESS, not the account kind.
+                            // FATMAMA registers cluster domains only
+                            // (`is_cluster_recipient`, 550 otherwise), and a
+                            // real address on an `.axiomDev` account was live
+                            // in accounts.json — so kind alone offered a
+                            // button that always fails.
                             .disabled(draft.walletEmail.isEmpty
                                       || draft.smtpHost.isEmpty
+                                      || !fatmamaAcceptsAddress(draft.walletEmail)
                                       || isRegisteringFatmama)
+                            .help(fatmamaAcceptsAddress(draft.walletEmail)
+                                  ? "Tell the dev relay to accept mail for this address."
+                                  : "Only @axiom / @axiom.internal addresses can register with the dev relay. A real mail account needs its own provider settings above.")
                             // Purely presentational — driven by the
                             // existing in-flight flag the register
                             // action already maintains.
@@ -803,6 +900,90 @@ private struct AccountEditor: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Credentials come FIRST, before the server settings
+                // (the owner, 2026-09-12: "should start before smtp"). They are
+                // the fields a real account cannot work without, and they were
+                // at the bottom of a six-section form where they read as
+                // absent — which is exactly how they were reported.
+                //
+                // TWO logins, not one: sending and receiving are frequently
+                // separate accounts at the same provider. Receiving is left
+                // blank for the common case and means "same as sending", so
+                // nobody types the same thing twice.
+                //
+                // Credentials only live on real-email accounts — the dev
+                // relay has no auth at all.
+                if draft.kind == .email {
+                    Section("Sign in — sending") {
+                        TextField("Username", text: $draft.username,
+                                  prompt: Text(draft.walletEmail.isEmpty
+                                               ? "you@example.com"
+                                               : draft.walletEmail))
+                            .textContentType(.username)
+                            .font(KiddoTokens.Typography.mono)
+                        SecureField(
+                            draft.hasKeychainPassword
+                                ? "Stored — type to replace"
+                                : "Password / app password",
+                            text: $draft.password
+                        )
+                        Text(authCaption)
+                            .font(KiddoTokens.Typography.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Section("Sign in — receiving") {
+                        TextField("Username", text: $draft.pop3Username,
+                                  prompt: Text("same as sending"))
+                            .textContentType(.username)
+                            .font(KiddoTokens.Typography.mono)
+                        SecureField(
+                            draft.hasPop3KeychainPassword
+                                ? "Stored — type to replace"
+                                : "same as sending",
+                            text: $draft.pop3Password
+                        )
+                        Text("Leave both blank if your provider uses one login for sending and receiving — most do.")
+                            .font(KiddoTokens.Typography.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if draft.kind == .email {
+                    Section("Check it works") {
+                        HStack(spacing: KiddoTokens.Spacing.xs) {
+                            Button(action: runConnectionTest) {
+                                Label("Test connection", systemImage: "bolt.horizontal.circle")
+                            }
+                            .disabled(isTesting
+                                      || draft.smtpHost.isEmpty
+                                      || draft.pop3Host.isEmpty)
+                            if isTesting {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                        if let r = testResult {
+                            legRow("Sending", r.sending)
+                            legRow("Receiving", r.receiving)
+                        }
+                        // The count is about the PROVIDER, so it is shown
+                        // whenever it is non-zero, not only right after a test.
+                        if authFailures > 0 {
+                            Text(authFailures >= ConnectionTest.warnAfterFailures
+                                 ? AuthFailureCount.warning(authFailures,
+                                                            kind: AuthFailureCount.lastKind(draft.id))
+                                 : "\(authFailures) attempt\(authFailures == 1 ? "" : "s") failed in a row.")
+                                .font(KiddoTokens.Typography.caption)
+                                .foregroundStyle(authFailures >= ConnectionTest.warnAfterFailures
+                                                 ? KiddoTokens.statusAttentionFg : .secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Text("Signs in and disconnects. Sends no mail and deletes nothing.")
+                            .font(KiddoTokens.Typography.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section(draft.kind == .email
                         ? "SMTP (outbound, TLS)"
                         : "SMTP (outbound)") {
@@ -815,45 +996,81 @@ private struct AccountEditor: View {
                 }
 
                 Section(draft.kind == .email
-                        ? "POP3 (inbound, TLS)"
+                        ? "Receiving (\(draft.inboundProtocol.displayName), TLS)"
                         : "POP3 (inbound)") {
+                    if draft.kind == .email {
+                        // IMAP scopes to one folder and leaves the rest of the
+                        // mailbox alone; POP3 sees the whole mailbox. Flipping
+                        // the protocol flips the port to the provider standard
+                        // (995 / 993) unless the user had set something else.
+                        Picker("Protocol", selection: $draft.inboundProtocol) {
+                            ForEach(InboundProtocol.allCases) { p in Text(p.displayName).tag(p) }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: draft.inboundProtocol) { newValue in
+                            let standard = Set(InboundProtocol.allCases.map { $0.defaultTLSPort })
+                            if standard.contains(draft.pop3Port) { draft.pop3Port = newValue.defaultTLSPort }
+                        }
+                        if draft.inboundProtocol == .imap {
+                            TextField("Folder", text: $draft.imapFolder, prompt: Text("INBOX"))
+                                .font(KiddoTokens.Typography.mono)
+                            Text("Only this folder is read. A provider-side rule that files AXIOM mail here keeps the rest of your mailbox out of Kiddo's sight entirely.")
+                                .font(KiddoTokens.Typography.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     TextField("Host", text: $draft.pop3Host)
                     TextField("Port", value: $draft.pop3Port, formatter: NumberFormatter())
                         .frame(minWidth: 80, maxWidth: 120)
                     if draft.kind == .email {
                         Toggle("Use TLS", isOn: $draft.pop3UseTLS)
                     }
-                    Stepper(value: $draft.pop3PollSecs, in: 1...60) {
-                        Text("Poll interval: \(draft.pop3PollSecs)s")
+                    // Range by kind: the dev relay is local and unbothered;
+                    // a real provider blocks IPs that hammer it, so the floor
+                    // is 15 s and the default is 60 s.
+                    Stepper(value: $draft.pop3PollSecs,
+                            in: draft.kind == .email ? 15...900 : 1...60,
+                            step: draft.kind == .email ? 15 : 1) {
+                        Text("Check for mail every \(draft.pop3PollSecs)s")
+                    }
+                    if draft.kind == .email && draft.pop3PollSecs < 30 {
+                        Text("Checking this often can get your IP blocked by the provider — a block looks like a connection timeout.")
+                            .font(KiddoTokens.Typography.caption)
+                            .foregroundStyle(KiddoTokens.statusAttentionFg)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
-                // Credentials only live on real-email accounts. The
-                // dev / FATMAMA path has no auth — fields stay hidden
-                // and unused.
+                // ORDER MATTERS: this sits BELOW Authentication. It was above
+                // it for one build, which pushed the username/password fields a
+                // section further down the form — and those are mandatory for a
+                // real account while this is a policy on top of it. Reported
+                // immediately ("the SMTP/POP3 does not have a fill for me to
+                // input user name and password").
                 //
-                // Phase 1: password persists in accounts.json as
-                // plaintext. Phase 3 will move it to the macOS
-                // Keychain and store only a presence flag here.
-                if draft.kind == .email {
-                    Section("Authentication") {
-                        TextField("Username", text: $draft.username,
-                                  prompt: Text("alice@example.com"))
-                            .textContentType(.username)
-                            .font(KiddoTokens.Typography.mono)
-                        SecureField(
-                            // Different prompt depending on whether
-                            // the keychain already holds a password —
-                            // matches Apple-style "leave blank to
-                            // keep" semantics.
-                            draft.hasKeychainPassword
-                                ? "Stored — type to replace"
-                                : "Password / app password",
-                            text: $draft.password
-                        )
-                        Text(authCaption)
-                            .font(KiddoTokens.Typography.caption)
-                            .foregroundStyle(.secondary)
+                // Retention lives HERE, next to the account it governs —
+                // not in the wallet app, which never holds these
+                // credentials and only reports what this setting does
+                // (docs/AXIOM_DESIGN_CarrierHandoff.md §5, §9.4).
+                //
+                // Deleting someone's mail is irreversible, so the choice is
+                // explicit and the consequence is spelled out under it
+                // rather than hidden in a tooltip.
+                Section("After collecting mail") {
+                    Picker("On the server", selection: $draft.retention) {
+                        ForEach(RetentionMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    Text(draft.retention.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if draft.retention == .deleteAll {
+                        Text("Everything in this mailbox is removed, including mail that has nothing to do with AXIOM.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -924,6 +1141,16 @@ private struct AccountEditor: View {
             if draft.walletEmail.isEmpty {
                 autoDetectEmail()
             }
+            // The failure run belongs to the PROVIDER, not to this window —
+            // show it the moment the account is opened, not only after a test.
+            authFailures = AuthFailureCount.get(draft.id)
+        }
+        .alert("Already failing — try again?", isPresented: $showBanWarning) {
+            Button("Test anyway", role: .destructive) { performConnectionTest() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text(AuthFailureCount.warning(authFailures,
+                                          kind: AuthFailureCount.lastKind(draft.id)))
         }
         // When the parent commits a save, `saved` becomes the
         // scrubbed-password version. Without this reset, the editor's

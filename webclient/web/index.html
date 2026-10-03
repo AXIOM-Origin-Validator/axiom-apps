@@ -145,16 +145,73 @@
   </div>
   <div id="boot" class="card"><span class="muted">Loading Core…</span></div>
 
-  <!-- Onboarding (dev test accounts only, for now) -->
+  <!-- Onboarding. REAL email is the default; the dev class is opt-in. -->
   <div id="onboard" class="card hidden">
-    <h2>Create a developer test wallet</h2>
-    <p class="muted" style="margin:.1rem 0 .9rem">This build creates <b>developer test accounts</b> only — the <code>@axiom.internal</code> dev class, on the isolated dev-AXC pool. Public accounts unlock once the validator network is wired for real-email delivery.</p>
+    <h2 id="o-title">Create your wallet</h2>
+    <!-- §5.5 step 2 — validator-setup launched this page with the validator's
+         NAME. Decision 3: the wallet names are DERIVED from it, never typed. -->
+    <p id="o-setup-banner" class="muted hidden" style="margin:.1rem 0 .9rem;padding:.55rem .7rem;border:1px solid var(--accent);border-radius:6px"></p>
+    <p class="muted setup-hide" style="margin:.1rem 0 .9rem">Your wallet is addressed by a <b>real email address</b> you control. Sending works from here: the round rides a held connection to the validators.</p>
+    <p class="muted setup-hide" style="margin:.1rem 0 .9rem;padding:.55rem .7rem;border:1px solid var(--warn);border-radius:6px">⚠ <b>Receiving does not work in a browser yet.</b> Your cheque is <b>mailed</b> to the address above, and a web page cannot read a mailbox (no raw TCP, no mail protocols). So a claim or an incoming payment will be <b>sent but not collected</b> until you open this wallet in a client that has a mail transport — or until browser pickup ships. Export the wallet from Settings to move it.</p>
+
+    <!-- §5.5 step 4 — VALIDATOR SETUP MODE (decisions 1–4 + the 2026-09-08
+         rulings): BOTH wallets are created here from the validator's name;
+         the operator types each wallet's email and each wallet's own
+         passphrase. Names are derived, never typed. Two DISTINCT addresses —
+         a wallet is its own mailbox, never shared. -->
+    <div id="o-vsetup" class="hidden">
+      <div id="vs-addresses" style="margin:.2rem 0 .9rem;padding:.6rem .75rem;border:1px solid var(--accent);border-radius:6px">
+        <div style="margin:.15rem 0"><b>Validator</b> <span id="vs-validator-email" style="font-family:monospace;font-weight:700;color:var(--accent)"></span><br><span class="muted">Its mailbox: what other validators and clients write to.</span><br><b>Validator id</b> <span id="vs-validator-id" style="font-family:monospace;font-weight:700;color:var(--accent)"></span><br><span class="muted">The identity the certificate is issued to.</span></div>
+        <div style="margin:.4rem 0 .15rem"><b>Stake wallet address</b> <span id="vs-stake-email-top" style="font-family:monospace;font-weight:700;color:var(--accent)"></span><br><span class="muted">Receives the certificate and holds the stake.</span></div>
+        <div style="margin:.4rem 0 .15rem"><b>Operational wallet address</b> <span id="vs-op-email-top" style="font-family:monospace;font-weight:700;color:var(--accent)"></span><br><span class="muted">Day-to-day funds: fees in, costs out.</span></div>
+      </div>
+      <h3 style="margin:.2rem 0 .4rem">Stake wallet — <span id="vs-stake-name" style="font-family:monospace"></span></h3>
+      <p class="muted" style="margin:.1rem 0 .5rem">Holds the stake. Locked while staked.</p>
+      <label>Address</label>
+      <div id="vs-stake-email-fixed" class="hidden" style="font-family:monospace;margin:.1rem 0 .5rem"></div>
+      <input id="vs-stake-email" placeholder="stake@example.com" inputmode="email" autocomplete="off" />
+      <label>Passphrase</label><input id="vs-stake-key" type="password" placeholder="strong passphrase" />
+      <label>Confirm</label><input id="vs-stake-key2" type="password" placeholder="re-enter passphrase" />
+
+      <h3 style="margin:1rem 0 .4rem">Operational wallet — <span id="vs-op-name" style="font-family:monospace"></span></h3>
+      <p class="muted" style="margin:.1rem 0 .5rem">Day-to-day funds: fees in, costs out.</p>
+      <label>Address</label>
+      <div id="vs-op-email-fixed" class="hidden" style="font-family:monospace;margin:.1rem 0 .5rem"></div>
+      <input id="vs-op-email" placeholder="ops@example.com" inputmode="email" autocomplete="off" />
+      <label>Passphrase</label><input id="vs-op-key" type="password" placeholder="a different passphrase" />
+      <label>Confirm</label><input id="vs-op-key2" type="password" placeholder="re-enter passphrase" />
+
+      <div style="margin-top:1rem" class="row">
+        <button id="vs-create">Create wallets and continue</button>
+      </div>
+      <p id="vs-next" class="muted" style="margin-top:.8rem"></p>
+    </div>
+
+    <div id="o-standard">
     <label>Name</label><input id="o-name" value="my-wallet" />
-    <label>Dev email</label>
-    <div class="suffix-row"><input id="o-email-local" placeholder="you" /><span class="suffix">@axiom.internal</span></div>
+
+    <!-- Real-email (default) -->
+    <div id="o-real-block">
+      <label>Email address</label>
+      <input id="o-email" placeholder="you@example.com" inputmode="email" autocomplete="email" />
+    </div>
+
+    <!-- Dev (opt-in) -->
+    <div id="o-dev-block" class="hidden">
+      <label>Dev email</label>
+      <div class="suffix-row"><input id="o-email-local" placeholder="you" /><span class="suffix">@axiom.internal</span></div>
+      <label>Developer passcode</label><input id="o-dev" type="password" placeholder="passcode to create a test account" />
+      <p class="muted" style="margin:.4rem 0 0">Dev accounts are the isolated <code>@axiom.internal</code> class on the dev-AXC pool — <b>separate money</b> from the public supply. They receive through TOT→FATMAMA, which exists only on a development fleet, so a dev wallet <b>cannot transact against a production validator</b>.</p>
+    </div>
+
     <label>Wallet key (password)</label><input id="o-key" type="password" placeholder="strong passphrase" />
     <label>Confirm wallet key</label><input id="o-key2" type="password" placeholder="re-enter passphrase" />
-    <label>Developer passcode</label><input id="o-dev" type="password" placeholder="passcode to create a test account" />
+
+    <label style="display:flex;align-items:center;gap:.5rem;margin-top:.9rem;font-weight:400">
+      <input type="checkbox" id="o-usedev" style="width:auto;margin:0" />
+      <span class="muted">Create a <b>developer test account</b> instead (<code>@axiom.internal</code>, dev-AXC pool)</span>
+    </label>
+
     <div style="margin-top:1rem" class="row">
       <button id="o-create">Create wallet</button>
     </div>
@@ -162,9 +219,10 @@
 
     <div style="margin:1.1rem 0 .3rem;border-top:1px solid #2a2f3a;padding-top:.9rem"></div>
     <label>Or import a wallet backup</label>
-    <p class="muted" style="margin:.1rem 0 .5rem">Bring a wallet over from the desktop wallet or another browser. On the source, export an <b>encrypted backup</b> (Mac: <b>Wallets → Export</b> → a <code>wallet.axpw</code> file), choose it here, and reuse the <b>Name</b> + <b>Wallet key</b> fields above — the key must be the one the wallet was exported with. The backup is decrypted with that key and re-encrypted at rest in this browser under it (dev passcode + confirm-key don't apply to import).</p>
+    <p class="muted" style="margin:.1rem 0 .5rem">Bring a wallet over from <b>a validator</b>, the desktop wallet, or another browser. Accepted: a validator's <code>wallet.axiom</code> (copy the file straight across — this is how a wallet comes back after a stake claim), or an <b>encrypted backup</b> (Mac: <b>Wallets → Export</b> → <code>wallet.axpw</code>). Choose the file here and reuse the <b>Name</b> + <b>Wallet key</b> fields above — the key must be the one the wallet uses. It is re-encrypted at rest in this browser under that key (dev passcode + confirm-key don't apply to import).</p>
     <input type="file" id="o-import-file" accept=".axpw,.axiom,application/octet-stream" />
     <div style="margin-top:.6rem" class="row"><button id="o-import" class="ghost">Import wallet</button></div>
+    </div><!-- /o-standard -->
   </div>
 
   <!-- Unlock -->
@@ -179,6 +237,16 @@
       <button id="u-forget" class="ghost">Forget</button>
     </div>
     <div style="margin-top:.6rem"><button id="u-new" class="ghost" style="width:100%">＋ Create a different wallet</button></div>
+    <!-- ⚠ IMPORT LIVES ON THE LOGIN SCREEN BY DESIGN (the owner, 2026-09-07):
+         "the webclient shouldnt be support two wallets at the same time ... to
+         working on a validator wallet, it is required to logout first that make
+         total sense". One wallet open at a time, so SWITCHING wallets — including
+         bringing one back from a validator — is a logout-then-choose action, and
+         this is where you choose. It used to be reachable ONLY by pressing
+         "Create a different wallet" and scrolling past the whole creation form,
+         which is why the Validator tab's export→claim→return journey had no
+         signposted way back. -->
+    <div style="margin-top:.6rem"><button id="u-import" class="ghost" style="width:100%">⤓ Import a wallet (from a validator or another device)</button></div>
   </div>
 
   <!-- Main app (wallet open) -->
@@ -222,6 +290,7 @@
       <button class="tab" data-tab="receive">Receive</button>
       <button class="tab" data-tab="history">History</button>
       <button class="tab" data-tab="proof">Proof</button>
+      <button class="tab" data-tab="validator">Validator</button>
     </div>
 
     <!-- Overview tab -->
@@ -231,10 +300,10 @@
         <div id="ov-tiers"></div>
       </div>
       <div class="card" id="ov-claim-card">
-        <h2>Dev funds <span class="badge">@axiom.internal</span></h2>
-        <p class="muted" style="margin:.1rem 0 .7rem">Claim <b>1 AXC</b> from the dev-AXC pool: fund (k=3 witness round over TOT) → Nabla register → pull the cheque (TOT→FATMAMA) → CL5 redeem. Runs against the live dev env.</p>
+        <h2 id="ov-claim-title">Claim funds</h2>
+        <p class="muted" id="ov-claim-note" style="margin:.1rem 0 .7rem">Claim <b>1 AXC</b>: fund (k=3 witness round over TOT) → Nabla register → cheque → CL5 redeem.</p>
         <label>Env host (TOT 7400–7409 · Nabla via tunnel)</label><input id="c-host" value="axiom-dev.mooo.com" />
-        <div style="margin-top:.8rem"><button id="ov-claim" style="width:100%">Claim dev funds</button></div>
+        <div style="margin-top:.8rem"><button id="ov-claim" style="width:100%">Claim funds</button></div>
         <pre id="c-out" class="muted" style="margin:.7rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
       </div>
       <div class="card" id="ov-heal-card" style="display:none">
@@ -372,8 +441,36 @@
         </select>
         <div id="r-check-mode-note" class="muted" style="font-size:10px; margin:-.2rem 0 .6rem"></div>
         <div style="margin-top:.2rem"><button id="r-refresh" style="width:100%">Check for cheques</button></div>
+
+        <!-- ⚠ MANUAL INTAKE. A browser cannot fetch its own mail (raw TCP and
+             provider TLS are both out of reach), so anything mailed to this
+             wallet has to be brought in by hand. Two ways, because the operator
+             may not be able to produce a FILE — webmail, a remote session, or a
+             client that only shows the payload inline. Both end in the same
+             place: the bytes are written where "Check for cheques" already
+             looks, so nothing downstream changes. -->
+        <div style="margin-top:1.1rem;border-top:1px solid #2a2f3a;padding-top:.9rem"></div>
+        <label>Bring in something that arrived by mail</label>
+        <p class="muted" style="margin:.1rem 0 .5rem">Anything mailed to this wallet — a <b>cheque</b>, a payment, or a <b>validator certificate</b> — arrives at your mailbox, and a web page cannot read one. Save the message from your mail client and choose it here, or paste its contents. Then press <b>Check for cheques</b>.</p>
+        <p class="muted" style="margin:.25rem 0 .35rem">Accepted: <code>.eml</code> (a saved mail message — in most clients <b>File → Save As</b>, or drag the message to your desktop), or a <code>.txt</code>/<code>.cbor</code> file holding just the message body. You can select several at once — one round sends three.<br>⚠ Outlook's <code>.msg</code> is <b>not</b> a mail message, it is Outlook's own binary format; use <b>Save as → Text only</b> or forward the mail to a client that can save <code>.eml</code>.</p>
+        <input type="file" id="r-intake-file" accept=".eml,.cbor,.txt,message/rfc822,application/octet-stream" multiple />
+        <p class="muted" style="margin:.5rem 0 .25rem">…or paste it. <b>The message body alone is enough</b> — the long block of letters and digits. Headers, <code>Subject:</code> and line breaks are all optional; paste the whole email if that is easier.</p>
+        <textarea id="r-intake-text" rows="4" placeholder="o2ZhbW91bnQaAAWagWhyZWNlaXZlcngkd2ViQGF4aW9tLWRldi5tb29vLmNvbWZjaGVxdWWi…" style="width:100%;font:11px ui-monospace,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.5rem"></textarea>
+        <div style="margin-top:.5rem" class="row"><button id="r-intake" class="ghost" style="width:100%">Take it in</button></div>
+        <pre id="r-intake-out" class="muted" style="margin:.6rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
         <div id="r-cheques" class="muted" style="margin-top:.7rem">None yet.</div>
       </div>
+      <!-- TEST-ONLY receive stub. Empty by default; a published build must
+           never ship a value here. See testFetchCycle() for why a browser
+           cannot fetch its own mail. -->
+      <div class="card" id="r-testfetch-card">
+        <h2>Test mail fetcher <span class="badge">testing only</span></h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">A browser <b>cannot</b> read POP3/IMAP — raw TCP and provider TLS are both out of reach, so a real-email wallet cannot receive its cheque here. For <b>testing</b>, run <code>scripts/mail_fetch_test.py --email &lt;your@address&gt;</code> on the same machine and paste its URL below; it pulls the mailbox and feeds this wallet. Leave empty otherwise.</p>
+        <label>Fetcher URL (leave empty to disable)</label>
+        <input id="r-testfetch" placeholder="http://127.0.0.1:8077" />
+        <p class="muted" style="margin:.5rem 0 0">Sending always uses TOT and needs none of this.</p>
+      </div>
+
       <!-- Dev mail connection — last, dev-domain wallets only. -->
       <div class="card" id="r-devmail-card">
         <h2>Dev mail connection <span class="badge">@axiom.internal</span></h2>
@@ -407,6 +504,101 @@
           <button id="p-cert" class="ghost" style="flex:1" disabled>Download certificate PDF</button>
         </div>
         <pre id="p-out" class="muted" style="margin:.8rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+    </div>
+
+    <!-- Validator tab — SPECIAL FEATURES. A wallet client stays a wallet
+         client: this claims a stake INTO THIS WALLET and does nothing to any
+         validator. The operator copies the wallet to the validator afterwards. -->
+    <div id="tab-validator" class="hidden">
+      <div class="card">
+        <h2>Claim a validator stake</h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">
+          This is a <b>special feature</b>. It claims a validator stake into
+          <b>this wallet</b> from a subsidy pool. It does not set up, contact or
+          register a validator — you claim here, then copy this wallet to your
+          validator machine.
+        </p>
+
+        <div id="v-lockbanner" class="hidden" style="margin:0 0 .8rem; padding:.6rem .7rem; border:1px solid #6b4a12; background:#2a1f0c; border-radius:9px">
+          <b>This wallet is stake-locked.</b>
+          <div class="muted" id="v-lockdetail" style="margin-top:.25rem"></div>
+        </div>
+
+        <div id="v-choices">
+          <div style="margin-bottom:.6rem">
+            <b>Bootstrap</b> — claims <b>505 AXC</b>
+            <div class="muted">Community. Stake floor 500 AXC; the extra 5 covers fees.</div>
+          </div>
+          <div style="margin-bottom:.6rem">
+            <b>Foundation</b> — claims <b>6,060 AXC</b>
+            <div class="muted">Foundation seat. Same stake floor as everyone, 500 AXC; the claim lands at least 6,000 AXC after fees.</div>
+          </div>
+        </div>
+
+        <div style="margin:.8rem 0; padding:.6rem .7rem; border:1px solid var(--line); border-radius:9px">
+          <b>Read this before you claim.</b>
+          <ul class="muted" style="margin:.35rem 0 0; padding-left:1.1rem; line-height:1.5">
+            <li>The stake <b>arrives in this wallet and is then locked</b>. You keep it; you cannot move it.</li>
+            <li>While locked the wallet <b>can still receive</b>, but <b>cannot send or redeem</b>.</li>
+            <li>The lock ends <b>by time only</b>. There is no unlock step and nobody can release it early — after the deadline your next send simply works.</li>
+            <li>A claim is <b>not reversible</b>. This is not the ordinary airdrop.</li>
+          </ul>
+        </div>
+
+        <div style="margin:.8rem 0 0; padding:.6rem .7rem; border:1px solid #6b4a12; background:#2a1f0c; border-radius:9px">
+          <b>The claim itself runs on your validator, not here.</b>
+          <div class="muted" style="margin-top:.35rem; line-height:1.5">
+            A stake claim requires a validator certificate, and Core refuses one
+            without it (<code>ValidatorJoinNoProvisionalVbc</code>) — that gate is
+            what stops an ordinary wallet drawing from the pools.
+            <br><br>
+            The reason the claim does not run here is <b>delivery, not permission</b>:
+            the claim's cheque is <b>mailed</b> to your wallet, and a browser cannot
+            read a mailbox. The claim would be sent and the money never collected.
+            <br><br>
+            So the order is: <b>export this wallet → copy it to the validator
+            machine → claim there</b>. The stake then lives in this wallet, locked,
+            exactly as described above. To bring it back afterwards: <b>log out</b>,
+            then <b>Import a wallet</b> on the login screen and choose the
+            validator's <code>wallet.axiom</code> — the stake and its lock come with it.
+          </div>
+        </div>
+        <pre id="v-out" class="muted" style="margin:.8rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
+      </div>
+
+      <div class="card">
+        <h2>Move this wallet to your validator</h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">
+          The stake lives in this wallet, so the validator needs <b>this wallet file</b>.
+          Export it, copy it to the validator machine, and keep the passphrase —
+          the file is encrypted and useless without it.
+        </p>
+        <button id="v-export" class="ghost" style="width:100%">Export wallet file</button>
+        <p class="muted" style="margin:.6rem 0 0">
+          Anyone holding this file <i>and</i> its passphrase controls the stake. Treat it like the key it is.
+        </p>
+      </div>
+
+      <!-- §6b — VBC REGISTRATION. A certificate is a CANDIDATE until Nabla
+           stamps it; the operator carries it here, from the stake wallet it
+           names, and takes the stamped file back to the validator. -->
+      <div class="card">
+        <h2>Register a validator certificate</h2>
+        <p class="muted" style="margin:.1rem 0 .7rem">
+          An issued certificate is not usable until <b>Nabla stamps it</b>. Nabla checks
+          <b>this wallet</b> — the stake wallet the certificate names — against its own
+          records (the wallet exists, holds the stake floor, sits at its confirmed head)
+          and either stamps the certificate or refuses. Each certificate can be
+          registered <b>once</b>.
+        </p>
+        <input id="v-vbc" type="file" accept=".cbor,application/cbor" style="width:100%">
+        <button id="v-register" class="ghost" style="width:100%; margin-top:.5rem">Register with Nabla</button>
+        <p class="muted" style="margin:.6rem 0 0">
+          Choose the validator's <code>config/vbc-bundle.cbor</code>. On success the <b>stamped</b>
+          file downloads — copy it back over <code>config/vbc-bundle.cbor</code> on the validator.
+        </p>
+        <pre id="v-reg-out" class="muted" style="margin:.6rem 0 0; white-space:pre-wrap; font:11px ui-monospace,monospace"></pre>
       </div>
     </div>
 
@@ -456,7 +648,8 @@ const _mod = await import('../pkg/axiom_sdk_wasm.js?v=' + V);
 const { setup, getCoreId, canonicalCoreId, Wallet, formatAxc, formatLdollarShort, sdkVersion, atomsPerAxc, kuaikuaiArt } = _mod;
 const _init = _mod.default;
 // Dev mail transport (TOT→FATMAMA): POP3 pull + XAXIOM-REGISTER over the tunnel.
-const { fatmamaRegister, kiddoReceiveCycle } = await import('./kiddo.js?v=' + V);
+const { fatmamaRegister, kiddoReceiveCycle, stripEmailToCbor } = await import('./kiddo.js?v=' + V);
+const { makeSessionPool } = await import('./session.js?v=' + V);
 // Genesis dev-funds claim + redeem (fund/commit splits) and the TOT transport.
 const { claimGenesis, redeem, send, sendWithScarPasscode, heal, burnScars, halReanchor, halComplete, recall, recallComplete, resumeSend } = await import('./genesis.js?v=' + V);
 const { makeTotTransport, totConfigFrom } = await import('./transport.js?v=' + V);
@@ -499,7 +692,7 @@ const PARENT = 'axiom';
 const $ = id => document.getElementById(id);
 const show = (...ids) => ['boot','onboard','unlock','main'].forEach(s => $(s).classList.toggle('hidden', !ids.includes(s)));
 function tab(name) {
-  ['overview','send','receive','history','proof'].forEach(t => $('tab-'+t).classList.toggle('hidden', t!==name));
+  ['overview','send','receive','history','proof','validator'].forEach(t => $('tab-'+t).classList.toggle('hidden', t!==name));
   document.querySelectorAll('.nav .tab').forEach(b => b.classList.toggle('active', b.dataset.tab===name));
   if (name==='receive' && wallet) {
     // Dev mail connection card only applies to @axiom.internal dev wallets.
@@ -507,6 +700,7 @@ function tab(name) {
     $('r-devmail-card').style.display = isDev ? '' : 'none';
   }
   if (name==='history' && wallet) renderHistory();
+  if (name==='validator' && wallet) renderValidatorTab();
 }
 // Self-send recovery types carry no counterparty value (heal + the two
 // YPX-020 HAL kinds). Friendly labels for the raw TxType debug strings.
@@ -571,6 +765,18 @@ function stepProgress(phase, k = 3) {
 const errOf = e => e && e.code ? `${e.code}: ${e.message}` : (e && e.message ? e.message : String(e));
 // Persistent, visible message banner — errors do NOT vanish like the toast.
 const setMsg = (text, cls='err') => { const m=$('msg'); m.textContent=text; m.className=`card ${cls}`; m.style.display=text?'block':'none'; if (text) console[cls==='err'?'error':'log']('[axiom]', text); };
+// Fork Settlement W7e-a — plain message for a redeem outcome whose Nabla
+// registration was refused (RedeemOutcome.redeemLegRefusal); '' otherwise.
+const legRefusalNote = r => (r && r.redeemLegRefusal)
+  ? 'The redeem completed, but its Nabla registration was refused because the redeem leg did not '
+    + "reproduce the validators' commitment. (" + r.redeemLegRefusal + ')'
+  : '';
+// Fork Settlement W7e — plain line for a redeem whose register ack reported the
+// new state HELD (it traces back to a double-spend). Text only: the burn is the
+// user's choice, never automatic.
+const heldNote = r => (r && r.provenance === 'held')
+  ? (r.heldReason || 'This payment traces back to a double-spend and is held. Burn the held amount to release your wallet.')
+  : '';
 
 // Re-auth gate. Prompts (masked) for the wallet key and verifies it before a
 // value-moving op. The key is NEVER stored — verified here and discarded — so
@@ -794,13 +1000,24 @@ async function initClWorker(elf) {
     clWorker = w;
     await clCall('init', clInitPayload(elf));
     // Signatures mirror sdk/wasm/src/transport.rs run_cl1 / run_cl5.
-    CL1 = (txJson, stateJson, prevReceipts, factChain, privateKey, now) =>
-      clCall('cl1', { txJson, stateJson, prevReceipts, factChain, privateKey, now });
-    // current_hibernation + oodsAttestation arrive LAST positionally
-    // (transport.rs pushes them as trailing args); the worker re-inserts
-    // hibernation into cl5Run's slot 5 and appends the reading last.
-    CL5 = (receiverPk, chequeBundle, balance, walletSeq, stateId, chequeClaimProof, txidAttestation, privateKey, now, currentHibernation, oodsAttestation) =>
-      clCall('cl5', { receiverPk, chequeBundle, balance, walletSeq, stateId, chequeClaimProof, txidAttestation, privateKey, now, currentHibernation, oodsAttestation });
+    // 7 declared params (transport.rs refuses to offload to fewer):
+    // factCertificates = CBOR Vec<VBCProofBundle>, the same input the
+    // in-process CL1 run gets — cl1Run's 7th argument.
+    CL1 = (txJson, stateJson, prevReceipts, factChain, privateKey, now, factCertificates) =>
+      clCall('cl1', { txJson, stateJson, prevReceipts, factChain, privateKey, now, factCertificates });
+    // 16 declared params — transport.rs refuses to offload to a closure with
+    // fewer (Function.length). Then ValidatorJoin §6b.13 (stake floor as BigInt,
+    // wallet-format block as CBOR bytes) and, last, prevReceipts (Fable review
+    // 2026-10-01 F-1(b): the receiver's last receipt, CBOR Vec<Receipt>). The worker re-orders them into cl5Run's
+    // signature and replies with the WHOLE run (Cl5Run CBOR), which the
+    // redeem machine builds its Nabla leg from (Fork Settlement W7e-a). u64
+    // wallet-state fields arrive as BigInt.
+    CL5 = (receiverPk, chequeBundle, balance, walletSeq, stateId, chequeClaimProof, txidAttestation, privateKey, now,
+           currentHibernation, oodsAttestation, currentWallClockLock, currentEmissionClaimedEpoch,
+           currentStakeFloorUntil, currentWalletFormat, prevReceipts) =>
+      clCall('cl5', { receiverPk, chequeBundle, balance, walletSeq, stateId, chequeClaimProof, txidAttestation, privateKey, now,
+                      currentHibernation, oodsAttestation, currentWallClockLock, currentEmissionClaimedEpoch,
+                      currentStakeFloorUntil, currentWalletFormat, prevReceipts });
     console.log('[axiom] CL worker ready — signing runs off the UI thread');
   } catch (e) {
     console.warn('[axiom] CL worker unavailable — signing in-process, UI may pause:', e?.message || e);
@@ -875,10 +1092,114 @@ function refreshWalletPicker() {
 if (refreshWalletPicker().length > 0) { show('unlock'); $('u-key').focus(); }
 else { show('onboard'); }
 
+// One address rule for the whole page (the standard create path repeats it
+// inline; setup mode uses this). Hoisted above the boot block that uses it.
+const REAL_EMAIL_RE = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
+
+// §5.5 step 7 — the hand-off. validator-setup serves this page on loopback
+// and minted a per-run token into the URL; the page POSTs each wallet's
+// canonical file bytes (AXWL — exactly what the SDK stores; the vault is
+// unlocked for this wallet at the moment of creation) to /intake/<role> on
+// the SAME origin with that token. No passphrase travels: the validator
+// holds the file, as it holds its own keys. Returns the validator's reply
+// ({ok, path, ...}) or null when this page was not opened by validator-setup.
+async function handOffToValidator(role, name, email, w) {
+  const q = new URLSearchParams(location.search);
+  const token = (q.get('token') || '').trim();
+  if (q.get('setup') !== '1' || !token) return null;
+  const bytes = storage.read(`${PARENT}/${name}/wallet.axiom`);
+  const info = w.info();
+  const r = await fetch(`/intake/${role}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Axiom-Setup-Token': token,
+      'X-Axiom-Wallet-Name': name,
+      'X-Axiom-Wallet-Email': email,
+      'X-Axiom-Wallet-Address': info.address || '',
+    },
+    body: bytes,
+  });
+  let reply = null;
+  try { reply = await r.json(); } catch (_) {}
+  if (!r.ok || !reply || !reply.ok) {
+    throw new Error(`the validator refused the ${role} wallet: ` + ((reply && reply.error) || `HTTP ${r.status}`));
+  }
+  return reply;
+}
+// §5.5 step 2 — launched by validator-setup on the validator's loopback with
+// `?validator=<name>&setup=1`. The name is the validator's own (decision 3):
+// both wallets are named from it, <name>_Stake first. textContent, never HTML —
+// the query string is operator-controlled but still input.
+{
+  const q = new URLSearchParams(location.search);
+  const vname = (q.get('validator') || '').trim();
+  if (vname && q.get('setup') === '1') {
+    // Operator-facing, not developer-facing (the owner, 2026-09-09): say WHICH
+    // validator's certificate is being produced and what to do now.
+    const b = $('o-setup-banner');
+    $('o-title').textContent = `Set up validator ${vname}`;
+    document.querySelectorAll('.setup-hide').forEach(el => el.classList.add('hidden'));
+    b.textContent = `Producing the certificate for ${vname}. Step 1 of 2 — create its two wallets: ` +
+      `${vname}_Stake and ${vname}_Operational. Enter a passphrase for each.`;
+    b.classList.remove('hidden');
+    if ($('o-name').value === 'my-wallet') $('o-name').value = `${vname}_Stake`;
+    // Step 4: the two-wallet form replaces the single-wallet form. Both
+    // addresses come pre-filled from validator.toml (`stake_email`, and
+    // `email` for the operational wallet) — editable; the same address for
+    // both is fine (the owner, 2026-09-09: ids are address ‖ key-suffix).
+    $('vs-stake-name').textContent = `${vname}_Stake`;
+    $('vs-op-name').textContent = `${vname}_Operational`;
+    // Addresses supplied by validator.toml are SHOWN, not asked again (the owner,
+    // 2026-09-09: "should be just asking for password"). The input keeps the
+    // value so the create handler reads it unchanged.
+    const opHint = (q.get('email') || '').trim().toLowerCase();
+    const stakeHint = (q.get('stake_email') || opHint).trim().toLowerCase();
+    const validatorHint = (q.get('validator_email') || '').trim().toLowerCase();
+    // Each address, highlighted, with its purpose (the owner, 2026-09-09).
+    $('vs-validator-email').textContent = validatorHint || '(not supplied)';
+    const vid = (q.get('validator_id') || '').trim().toLowerCase();
+    $('vs-validator-id').textContent = vid ? vid.slice(0, 16) + '…' : '(assigned by the validator)';
+    if (vid) $('vs-validator-id').title = vid;
+    $('vs-stake-email-top').textContent = stakeHint || '(type below)';
+    $('vs-op-email-top').textContent = opHint || '(type below)';
+    const fix = (inputId, fixedId, v) => {
+      if (!(v && REAL_EMAIL_RE.test(v))) return;
+      $(inputId).value = v; $(inputId).classList.add('hidden');
+      $(fixedId).textContent = v; $(fixedId).classList.remove('hidden');
+    };
+    fix('vs-stake-email', 'vs-stake-email-fixed', stakeHint);
+    fix('vs-op-email', 'vs-op-email-fixed', opHint);
+    $('vs-next').textContent = `Step 2 — the validator requests the certificate for ${vname}; ` +
+      `it arrives by email at ${stakeHint || 'the stake wallet address'}.`;
+    $('o-standard').classList.add('hidden');
+    $('o-vsetup').classList.remove('hidden');
+    ($('vs-stake-email').classList.contains('hidden') ? $('vs-stake-key') : $('vs-stake-email')).focus();
+  }
+}
+
 function renderOverview() {
   const info = wallet.info();
   const st = wallet.status();
   $('ov-name').textContent = info.name;
+
+  // ⚠ THE CLAIM CARD MUST NOT SAY "dev funds" FOR A PUBLIC WALLET. The two
+  // claims draw on DIFFERENT MONEY: a dev wallet takes dev-AXC from the
+  // isolated 1M pool; a real-email wallet takes a PUBLIC airdrop against the
+  // 100M cap (AXIOM_DESIGN_FactClassIsolation.md R1, enforced in Core at
+  // validate_transaction). The card was hardcoded to the dev wording, which
+  // was true only while dev was the only class this client could create.
+  {
+    const dev = String(info.email || '').endsWith('@axiom.internal');
+    const t = $('ov-claim-title'), n = $('ov-claim-note'), b = $('ov-claim');
+    if (t) t.innerHTML = dev
+      ? 'Dev funds <span class="badge">@axiom.internal</span>'
+      : 'Claim funds <span class="badge">public</span>';
+    if (b) b.textContent = dev ? 'Claim dev funds' : 'Claim 1 AXC';
+    if (n) n.innerHTML = dev
+      ? 'Claim <b>1 AXC</b> from the isolated <b>dev-AXC</b> pool: fund (k=3 witness round over TOT) → Nabla register → pull the cheque (TOT→FATMAMA) → CL5 redeem. Dev funds are <b>separate money</b> from the public supply, and this path needs a development fleet.'
+      : 'Claim <b>1 AXC</b> from the <b>public</b> supply: fund (k=3 witness round over TOT) → Nabla register → the cheque returns on the held session → CL5 redeem.';
+  }
   // formatAxc takes a u64 → wasm needs a BigInt, but serde-wasm-bindgen
   // serialized balance as a plain JS number. Coerce, or it throws
   // "invalid argument type in toBigInt operation".
@@ -956,26 +1277,62 @@ function renderOverview() {
 // unlock when validators are wired to sendmail for real-email receive.
 const DEV_DOMAIN = 'axiom.internal';
 const DEV_PASSCODE = 'fatmama approve axiom';
+
+// The dev class is OPT-IN (the owner, 2026-09-07: "for dev mail, now it should be
+// in an option you have to click in, guard by the dev password ... because all
+// our validator now has proper access to smtp etc"). Real email is the default
+// because it is the only class that works against a production validator: the
+// dev receive path is TOT→FATMAMA, and `dev-fatmama` is compiled OUT of release
+// TOT builds.
+//
+// ⚠ THE DOMAIN IS A PROTOCOL DECISION, NOT A LABEL. `is_dev_wallet()`
+// (core/logic/src/wallet_id.rs) derives the class from an EXACT
+// `@axiom.internal` suffix, and Core enforces class isolation at
+// `validate_transaction` (AXIOM_DESIGN_FactClassIsolation.md R1). A dev wallet
+// spends dev-AXC from the isolated 1M pool; a real-email wallet is PUBLIC class
+// against the 100M cap. They are different money.
+$('o-usedev').onchange = () => {
+  const dev = $('o-usedev').checked;
+  $('o-dev-block').classList.toggle('hidden', !dev);
+  $('o-real-block').classList.toggle('hidden', dev);
+  setMsg('');
+};
+
 $('o-create').onclick = async () => {
   setMsg('');
   const name = $('o-name').value.trim();
-  const local = $('o-email-local').value.trim().toLowerCase();
   const key = $('o-key').value, key2 = $('o-key2').value;
-  const dev = $('o-dev').value;
+  const useDev = $('o-usedev').checked;
   if (!name) { setMsg('Enter a wallet name.', 'err'); $('o-name').focus(); return; }
-  if (!local) { setMsg('Enter the dev email (the part before @axiom.internal).', 'err'); $('o-email-local').focus(); return; }
-  if (/[^a-z0-9._-]/.test(local)) { setMsg('Dev email: letters, digits, and . _ - only (before @axiom.internal).', 'err'); $('o-email-local').focus(); return; }
-  if (dev !== DEV_PASSCODE) { setMsg('Developer passcode required to create a test account.', 'err'); $('o-dev').focus(); return; }
+
+  let email;
+  if (useDev) {
+    const local = $('o-email-local').value.trim().toLowerCase();
+    const dev = $('o-dev').value;
+    if (!local) { setMsg('Enter the dev email (the part before @axiom.internal).', 'err'); $('o-email-local').focus(); return; }
+    if (/[^a-z0-9._-]/.test(local)) { setMsg('Dev email: letters, digits, and . _ - only (before @axiom.internal).', 'err'); $('o-email-local').focus(); return; }
+    if (dev !== DEV_PASSCODE) { setMsg('Developer passcode required to create a test account.', 'err'); $('o-dev').focus(); return; }
+    email = `${local}@${DEV_DOMAIN}`;   // dev class — isolated dev-AXC pool
+  } else {
+    email = $('o-email').value.trim().toLowerCase();
+    if (!email) { setMsg('Enter your email address.', 'err'); $('o-email').focus(); return; }
+    // Deliberately permissive: an address is ROUTING, not identity
+    // (YP §16.8.0.1a), and the protocol does not police domains. Reject only
+    // what cannot be an address at all, plus the dev domain, which must come
+    // from the checkbox so the class is always a deliberate choice.
+    if (!/^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(email)) {
+      setMsg('Enter a valid email address (you@example.com).', 'err'); $('o-email').focus(); return;
+    }
+    if (email.endsWith(`@${DEV_DOMAIN}`)) {
+      setMsg(`@${DEV_DOMAIN} is the developer class — tick "Create a developer test account" to use it.`, 'err');
+      $('o-email').focus(); return;
+    }
+  }
+
   if (!key) { setMsg('Enter a wallet key (password) — the field is empty.', 'err'); $('o-key').focus(); return; }
   if (key !== key2) { setMsg('Wallet keys do not match — re-enter to confirm.', 'err'); $('o-key2').focus(); return; }
-  const email = `${local}@${DEV_DOMAIN}`;   // dev class — auto-routed to the dev-AXC pool
   try {
-    console.log('[axiom] creating wallet', { name, email, parent: PARENT });
-    await VAULT.init(key);   // derive the at-rest key BEFORE create (it persists immediately)
-    wallet = Wallet.createWithJsStorage(name, email, key, PARENT, storage);
-    console.log('[axiom] created; saving…');
-    wallet.save();
-    localStorage.setItem('axiom_last_wallet', name);
+    wallet = await createWalletLocal(name, email, key);
     setMsg('');
     toast('wallet created');
     renderOverview();
@@ -984,6 +1341,77 @@ $('o-create').onclick = async () => {
     VAULT.lock();
     setMsg('Create failed — ' + errOf(e), 'err');
     console.error('[axiom] create failed', e);
+  }
+};
+
+// ONE creation path (RULE 1): keygen + first save under a fresh at-rest key.
+// Local only — no network. The caller decides what to do with the handle.
+async function createWalletLocal(name, email, key) {
+  console.log('[axiom] creating wallet', { name, email, parent: PARENT });
+  await VAULT.init(key);   // derive the at-rest key BEFORE create (it persists immediately)
+  const w = Wallet.createWithJsStorage(name, email, key, PARENT, storage);
+  console.log('[axiom] created; saving…');
+  w.save();
+  localStorage.setItem('axiom_last_wallet', name);
+  return w;
+}
+
+
+// §5.5 step 4 — validator setup mode: both wallets, derived names, two
+// addresses, two passphrases (the owner, 2026-09-08). Sequential under the vault:
+// each wallet's frames are sealed under its OWN key, so create → close → lock
+// between the two. Ends on the unlock screen with both wallets listed; the
+// hand-off (step 7) is the next build.
+$('vs-create').onclick = async () => {
+  setMsg('');
+  const stakeName = $('vs-stake-name').textContent, opName = $('vs-op-name').textContent;
+  const stakeEmail = $('vs-stake-email').value.trim().toLowerCase();
+  const opEmail = $('vs-op-email').value.trim().toLowerCase();
+  const sk = $('vs-stake-key').value, sk2 = $('vs-stake-key2').value;
+  const ok = $('vs-op-key').value, ok2 = $('vs-op-key2').value;
+  for (const [em, id, what] of [[stakeEmail, 'vs-stake-email', 'stake'], [opEmail, 'vs-op-email', 'operational']]) {
+    if (!REAL_EMAIL_RE.test(em)) { setMsg(`Enter a valid ${what} wallet email (you@example.com).`, 'err'); $(id).focus(); return; }
+    if (em.endsWith(`@${DEV_DOMAIN}`)) { setMsg(`@${DEV_DOMAIN} is the developer class — not for a validator's wallets.`, 'err'); $(id).focus(); return; }
+  }
+  // Same address for both is FINE (the owner, 2026-09-09): a wallet id is
+  // email ‖ key-derived suffix, and every receiver filters on the FULL id —
+  // two wallets in one mailbox never mix. (A refusal lived here until then.)
+  if (!sk) { setMsg('Enter the stake wallet key.', 'err'); $('vs-stake-key').focus(); return; }
+  if (sk !== sk2) { setMsg('Stake wallet keys do not match.', 'err'); $('vs-stake-key2').focus(); return; }
+  if (!ok) { setMsg('Enter the operational wallet key.', 'err'); $('vs-op-key').focus(); return; }
+  if (ok !== ok2) { setMsg('Operational wallet keys do not match.', 'err'); $('vs-op-key2').focus(); return; }
+  if (listWallets().includes(stakeName) || listWallets().includes(opName)) {
+    setMsg(`${stakeName} or ${opName} already exists in this browser — Forget it on the unlock screen first.`, 'err'); return;
+  }
+  $('vs-create').disabled = true;
+  try {
+    const w1 = await createWalletLocal(stakeName, stakeEmail, sk);
+    const id1 = (w1.info().address || stakeEmail);
+    const h1 = await handOffToValidator('stake', stakeName, stakeEmail, w1);
+    try { w1.close(); } catch (_) {}
+    VAULT.lock();
+    const w2 = await createWalletLocal(opName, opEmail, ok);
+    const id2 = (w2.info().address || opEmail);
+    const h2 = await handOffToValidator('operational', opName, opEmail, w2);
+    try { w2.close(); } catch (_) {}
+    VAULT.lock();
+    localStorage.setItem('axiom_last_wallet', stakeName);
+    refreshWalletPicker();
+    $('u-wallet').value = stakeName;
+    show('unlock');
+    const vname = (new URLSearchParams(location.search).get('validator') || '').trim();
+    const handed = h1 && h2
+      ? ` Handed to the validator. Step 2 — the certificate for ${vname} is being produced by the validator; it arrives by email at ${stakeEmail}.`
+      : ` Next: hand them to the validator — export each wallet file from its Validator tab (this page was not opened by validator-setup).`;
+    // Wallet IDS (address ‖ key-suffix), not bare addresses (the owner, 2026-09-09).
+    setMsg(`Wallets created: ${stakeName} (${id1}) and ${opName} (${id2}).` + handed, 'ok');
+    toast('both wallets created');
+  } catch (e) {
+    VAULT.lock();
+    setMsg('Create failed — ' + errOf(e), 'err');
+    console.error('[axiom] validator setup create failed', e);
+  } finally {
+    $('vs-create').disabled = false;
   }
 };
 
@@ -1039,7 +1467,7 @@ $('o-import').onclick = async () => {
     storage.writeAtomic(`${PARENT}/${name}/wallet.axiom`, buf);  // seals the AXWL into an AXEJ frame in localStorage
     wallet = Wallet.openWithJsStorage(`${PARENT}/${name}`, storage);
     if (!wallet.verifyKey(key)) {                                // key must match the wallet's own auth_hash
-      try { wallet.close(); } catch(_){} wallet = null; VAULT.lock(); forgetWallet(name);
+      closeSessionPool(); try { wallet.close(); } catch(_){} wallet = null; VAULT.lock(); forgetWallet(name);
       setMsg('Wrong key for this backup — it must be the password the wallet was created with on the source device.', 'err'); $('o-key').focus(); return;
     }
     localStorage.setItem('axiom_last_wallet', name);
@@ -1047,7 +1475,7 @@ $('o-import').onclick = async () => {
     toast('wallet imported');
     renderOverview();
   } catch (e) {
-    try { wallet?.close(); } catch(_){} wallet = null; VAULT.lock();
+    closeSessionPool(); try { wallet?.close(); } catch(_){} wallet = null; VAULT.lock();
     try { forgetWallet(name); } catch(_){}                       // don't leave a half-written wallet behind
     const m = String(e && e.message || e);
     if (m.includes('VersionMismatch') || m.toLowerCase().includes('version'))
@@ -1076,7 +1504,7 @@ $('u-open').onclick = async () => {
     await VAULT.unlock(key, VAULT.saltOf(frame));
     wallet = Wallet.openWithJsStorage(`${PARENT}/${name}`, storage);
     if (!wallet.verifyKey(key)) {               // protocol owner-proof (YP §39.3) — defence in depth
-      try { wallet.close(); } catch(_){} wallet = null; VAULT.lock();
+      closeSessionPool(); try { wallet.close(); } catch(_){} wallet = null; VAULT.lock();
       setMsg('Wrong wallet key — try again.', 'err'); $('u-key').focus(); return;
     }
     localStorage.setItem('axiom_last_wallet', name);
@@ -1084,13 +1512,22 @@ $('u-open').onclick = async () => {
     setMsg('');
     renderOverview();
   } catch (e) {
-    try { wallet?.close(); } catch(_){} wallet = null; VAULT.lock();
+    closeSessionPool(); try { wallet?.close(); } catch(_){} wallet = null; VAULT.lock();
     const m = String(e && e.message || e);
     if (m.includes('VAULT_BADKEY')) { setMsg('Wrong wallet key — try again.', 'err'); $('u-key').focus(); }
     else { setMsg('Open failed — ' + errOf(e), 'err'); console.error('[axiom] open failed', e); }
   }
 };
 $('u-new').onclick = () => { setMsg(''); $('o-key').value=''; $('o-key2').value=''; show('onboard'); $('o-name').focus(); };
+// Same screen, but land the user ON the import controls rather than at the top
+// of a creation form they do not want to fill in.
+$('u-import').onclick = () => {
+  setMsg(''); $('o-key').value=''; $('o-key2').value='';
+  show('onboard');
+  const f = $('o-import-file');
+  if (f) { f.scrollIntoView({ block: 'center' }); }
+  $('o-name').focus();
+};
 // Wipe every axfs key for axiom/<name>/... + the last-wallet pointer.
 // Browser-local only — there is no on-chain wallet delete.
 function forgetWallet(name) {
@@ -1182,7 +1619,7 @@ $('s-send').onclick = async () => {
     const transport = mkTransport(host, 'witness');
     const params = {
       validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-      k: 3,
+      // no k — the WASM derives it from the artifact (YP §17.3.1.4, KI#150)
       inboxNew: `${maildir}/inbox/new`,
       inboxCur: `${maildir}/inbox/cur`,
       pollIntervalMs: 250,
@@ -1203,6 +1640,15 @@ $('s-send').onclick = async () => {
     if (e && e.code === 'ScarConsentRequired') {
       setMsg('Payment paused — the receiver must consent before they can accept this money.', 'warn');
       console.info('[axiom] scar-consent pause', e);
+    } else if (e && e.code === 'ScarSettling') {
+      // ForkSettlement §4 (R3) — money this wallet RECEIVED is still settling
+      // at Nabla. The SDK refused before any witness: nothing moved. Messenger
+      // text only; the wait is the SDK's verdict (recovery "RetryAfter(N)").
+      const m = /RetryAfter\((\d+)\)/.exec(String(e.recovery || ''));
+      const secs = m ? Number(m[1]) : null;
+      setMsg('Received money is still settling — nothing was sent. Try again'
+        + (secs !== null ? ` in about ${secs} s.` : ' shortly.'), 'warn');
+      console.info('[axiom] scar settling', e);
     } else {
       setMsg('Send failed — ' + errOf(e), 'err');
       console.error('[axiom] send failed', e);
@@ -1346,7 +1792,7 @@ $('s-scar-send').onclick = async () => {
     const transport = mkTransport(host, 'witness');
     const params = {
       validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-      k: 3,
+      // no k — the WASM derives it from the artifact (YP §17.3.1.4, KI#150)
       inboxNew: `${maildir}/inbox/new`,
       inboxCur: `${maildir}/inbox/cur`,
       pollIntervalMs: 250,
@@ -1456,6 +1902,100 @@ $('p-cert').onclick = () => {
 // Receive — pull inbound cheques (TOT→FATMAMA), scan them into the wallet,
 // and offer a per-cheque Redeem (CL5). The host comes from the Receive tab's
 // own TOT field; the validator/Nabla set is the shared env discovery.
+// ── WHICH RECEIVE LEG? The wallet's CLASS decides, never a preference ──────
+//
+// DEV (`@axiom.internal`): replies are MAILED and drained out of FATMAMA by
+// kiddo.js. That tunnel is `dev-fatmama`, COMPILED OUT of production TOT — a
+// dev wallet therefore cannot complete a round against a real validator.
+//
+// NORMAL (real email): the round rides a HELD TOT `/session`; ANTIE deposits
+// the replies into that session's custody directory and TOT pumps them back
+// down the same socket (AXIOM_DESIGN_TOT.md §5.4, YPX-023 §3.3).
+//
+// ⚠ Taking the /session route for a dev wallet is REJECTED by ANTIE — the route
+// is the client's declaration of class and it is cross-checked against the
+// sender address ("stamp and address disagree", YPX-023 §2B.4). So this is
+// derived from the address, exactly as `is_dev_wallet()` does in Core.
+const DEV_SUFFIX = '@axiom.internal';
+function walletIsDev() {
+  try { return String(wallet.info().email || '').endsWith(DEV_SUFFIX); }
+  catch (_) { return false; }
+}
+// One pool per wallet session, lazily made; holds one socket per validator.
+let SESSION_POOL = null;
+function sessionPool() {
+  if (walletIsDev()) return null;                       // dev never sessions
+  if (!SESSION_POOL) {
+    SESSION_POOL = makeSessionPool({
+      storage,
+      walletDir: `${PARENT}/${wallet.info().name}`,
+      onLanded: (n, v) => console.log(`[session] landed reply ${n} from ${v}`),
+    });
+  }
+  return SESSION_POOL;
+}
+function closeSessionPool() {
+  if (SESSION_POOL) { try { SESSION_POOL.closeAll(); } catch (_) {} SESSION_POOL = null; }
+}
+
+// ── TEST-ONLY RECEIVE STUB (mail_fetch_test.py) ───────────────────────────
+//
+// ⚠⚠ THIS IS A TEST STUB, NOT A TRANSPORT. It is OFF unless a URL is entered.
+//
+// A browser cannot fetch its own mail: POP3/IMAP are raw TCP, a real provider is
+// implicit TLS + AUTH, and a browser has neither raw sockets nor a TLS stack to
+// point at an arbitrary host. TOT's tunnel pumps bytes opaquely, so even
+// tunnelled the handshake would have to happen in JS. That is a property of
+// BROWSERS, not a defect in AXIOM — every other client (soak, Mac wallet) runs
+// its own mail transport, which is the application's job.
+//
+// So for testing, `scripts/mail_fetch_test.py` plays that role: it holds the
+// mailbox credentials, pulls over IMAP+TLS, and serves the raw messages on
+// loopback. This drains it into the SAME maildir/inbox/new the machines poll —
+// identical downstream shape to the dev FATMAMA path, different source.
+//
+// ⚠ DO NOT SHIP A DEFAULT FOR THIS and do not let it become "the browser's
+// transport". A released browser wallet needs a real answer with an auth story
+// (the owner, 2026-09-07: "we may/maynot to upgrade the subsystem to be a release
+// version for validator in the future"). Until then a real-email wallet cannot
+// receive in a published build, and the UI must not pretend otherwise.
+function testFetchUrl() {
+  const el = $('r-testfetch');
+  return el ? el.value.trim() : '';
+}
+
+async function testFetchCycle() {
+  const base = testFetchUrl();
+  if (!base || !wallet) return 0;
+  let msgs;
+  try {
+    const r = await fetch(`${base.replace(/\/$/, '')}/mail`, { cache: 'no-store' });
+    if (!r.ok) return 0;
+    msgs = (await r.json()).messages || [];
+  } catch (_) { return 0; }          // fetcher not running — silent, it is optional
+  if (!msgs.length) return 0;
+
+  const inboxNew = `${PARENT}/${wallet.info().name}/maildir/inbox/new`;
+  let landed = 0;
+  for (const b64 of msgs) {
+    let raw;
+    try {
+      const bin = atob(b64);
+      raw = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) raw[i] = bin.charCodeAt(i);
+    } catch (_) { continue; }
+    // ONE owner for the carrier-wrapper strip — kiddo.js. MIME never reaches
+    // no_std machine code, so this must produce raw CBOR or drop the message.
+    const cbor = stripEmailToCbor(raw);
+    if (!cbor) { console.warn('[testfetch] dropping: not a base64-CBOR email'); continue; }
+    const name = `${(Date.now() / 1000).toFixed(6)}.${landed}.tf.${crypto.randomUUID()}`;
+    storage.writeAtomic(`${inboxNew}/${name}`, cbor);
+    landed++;
+  }
+  if (landed) console.log(`[testfetch] landed ${landed} message(s) into the inbox`);
+  return landed;
+}
+
 function recvHost() { return ($('r-tot').value.trim() || 'axiom-dev.mooo.com:7400').replace(/:\d+$/, ''); }
 // Build a TOT transport for `host`, configured to email-wrap outbound
 // deliveries as `messageType` (witness/redeem) from this wallet's address.
@@ -1467,13 +2007,14 @@ function mkTransport(host, messageType) {
     fromEmail: wallet.info().email,
     messageType,
     cl1: CL1, cl5: CL5,   // null unless the CL worker came up → in-process fallback
+    session: sessionPool(),   // null for a dev wallet → /intake + FATMAMA drain
   }));
 }
 function recvParams() {
   const maildir = `${PARENT}/${wallet.info().name}/maildir`;
   return {
     validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-    k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+    inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
     pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
   };
 }
@@ -1541,7 +2082,10 @@ async function receiveCycle() {
   // Bound the whole pull so a stalled FATMAMA leg can't hang "Pulling…"
   // forever (fatmamaRegister's .catch only swallows a reject, not a hang).
   await Promise.race([
-    kiddoReceiveCycle({ smtpWs: `ws://${host}:7400/fatmama/0`, pop3Ws: `ws://${host}:7400/fatmama/1`, email: wallet.info().email, storage, walletDir: `${PARENT}/${wallet.info().name}` }),
+    // Dev-only probe: a real-email wallet has no FATMAMA mailbox to drain.
+    walletIsDev()
+      ? kiddoReceiveCycle({ smtpWs: `ws://${host}:7400/fatmama/0`, pop3Ws: `ws://${host}:7400/fatmama/1`, email: wallet.info().email, storage, walletDir: `${PARENT}/${wallet.info().name}` })
+      : Promise.resolve(0),
     new Promise((_, rej) => setTimeout(() => rej(new Error('pull timed out')), 18000)),
   ]).catch(() => {});
   // YPX-001 §1.5.1 — scan for scar-consent notifications BEFORE recv() sweeps
@@ -1550,6 +2094,111 @@ async function receiveCycle() {
   await refreshScarConsents();
   renderCheques(wallet.recv(`${PARENT}/${wallet.info().name}/maildir`) || []);
 }
+// ── MANUAL MAIL INTAKE (file or paste) ─────────────────────────────────────
+//
+// ⚠ WHY THIS EXISTS. Everything mailed to this wallet — a cheque from a claim,
+// a payment from someone else — is delivered by the validator's outbound
+// carrier to a real mailbox. A browser cannot read one (no raw TCP, no TLS
+// stack it can point at a provider), so without this control the money is sent
+// and never collected. See the banner at the cheque dispatch in
+// antie/src/gateway.rs for why that delivery is correct and not a defect.
+//
+// BOTH SOURCES END IN THE SAME PLACE: the raw CBOR is written under the
+// wallet's `…/maildir/inbox/new/` key prefix — which is a KEY, not a folder
+// (the storage shim is a flat localStorage map, `mkdirP` is a no-op). "Check
+// for cheques" already scans exactly that, so nothing downstream changes.
+//
+// ⚠ A VBC ARRIVES BY THIS SAME PATH. Its issuer signature rides on the
+// WitnessResponse, and for a mail-carrier client that response is MAILED and
+// drained into this same inbox — identical bytes, identical destination. An
+// earlier version of this comment claimed a VBC "cannot come in this way"
+// because signatures live at `{wallet.dir()}/pending_round/vbc_sigs.cbor`; that
+// confused where they are KEPT AFTER EXTRACTION with how they ARRIVE. Corrected
+// 2026-09-07 (the owner: "VBC is still with the mail path").
+//
+// The assembly logic is in the SHARED layer and is reachable from here —
+// `sdk/core/src/validator_join.rs` (`VbcIssuerSignature`, `collected`,
+// `assemble`). What is missing is only a wasm BINDING to drive it: `sdk/wasm`
+// exposes no VBC surface today, so the bytes can land but nothing in the browser
+// yet turns three of them into a certificate. That is a binding to add, NOT a
+// second intake path — do not build one.
+function intakeBytesToCbor(raw) {
+  // A saved mail file is the carrier-wrapped form kiddo.js already parses; a
+  // bare paste may be just the base64 body, or raw CBOR. Try in that order.
+  const cbor = stripEmailToCbor(raw);
+  if (cbor) return cbor;
+  // bare base64?
+  try {
+    let t = '';
+    for (let i = 0; i < raw.length; i++) t += String.fromCharCode(raw[i]);
+    const compact = t.replace(/\s+/g, '');
+    if (compact && /^[A-Za-z0-9+/=]+$/.test(compact)) {
+      const bin = atob(compact);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+  } catch (_) { /* fall through */ }
+  // Raw CBOR? A protocol artifact is a CBOR MAP or ARRAY at the top level — a
+  // real cheque starts 0xa1 (major type 5, map) and runs ~90 KB.
+  //
+  // ⚠ THE CHECK MUST BE NARROW, and the first version was not. It accepted
+  // `(raw[0] & 0xe0) >= 0x80`, which also passes 0xd0 — the OLE magic that
+  // begins an Outlook `.msg`. So a `.msg` was ACCEPTED as raw CBOR, reported
+  // "✓ took in 1 item", and landed garbage in the inbox: a control claiming
+  // success while nothing arrived. Caught 2026-09-07 before it shipped.
+  //
+  // Major type 4 (array, 0x80-0x9f) and 5 (map, 0xa0-0xbf) only. Everything
+  // else — OLE/.msg (0xd0), PDF (0x25), ZIP (0x50), plain text — is refused and
+  // named to the operator, which is the honest answer: this file is not the
+  // thing you meant to bring in.
+  const mt = raw.length ? (raw[0] & 0xe0) : 0;
+  if (raw.length > 32 && (mt === 0x80 || mt === 0xa0)) return raw;
+  return null;
+}
+
+function landInInbox(cbor, n) {
+  const uuid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2);
+  const name = `${(Date.now() / 1000).toFixed(6)}.${n}.in.${uuid}`;
+  storage.writeAtomic(`${PARENT}/${wallet.info().name}/maildir/inbox/new/${name}`, cbor);
+}
+
+$('r-intake').onclick = async () => {
+  if (!wallet) return;
+  const out = $('r-intake-out'); out.textContent = '';
+  const files = Array.from($('r-intake-file').files || []);
+  const pasted = ($('r-intake-text').value || '').trim();
+  if (!files.length && !pasted) {
+    out.textContent = 'Choose a file or paste a message first.'; return;
+  }
+  const btn = $('r-intake'); btn.disabled = true; btn.textContent = 'Taking in…';
+  let landed = 0; const bad = [];
+  try {
+    for (const f of files) {
+      const raw = new Uint8Array(await f.arrayBuffer());
+      const cbor = intakeBytesToCbor(raw);
+      if (cbor) { landInInbox(cbor, landed); landed++; }
+      else bad.push(f.name);
+    }
+    if (pasted) {
+      const cbor = intakeBytesToCbor(new TextEncoder().encode(pasted));
+      if (cbor) { landInInbox(cbor, landed); landed++; }
+      else bad.push('pasted text');
+    }
+    // Say what happened in the operator's terms, and NEVER claim success on a
+    // partial: a message that did not parse is money that has not arrived.
+    const lines = [];
+    if (landed) lines.push(`✓ took in ${landed} item(s) — now press "Check for cheques".`);
+    if (bad.length) lines.push(`✗ could not read: ${bad.join(', ')}\n   Expected a saved mail message, its base64 body, or raw CBOR.`);
+    out.textContent = lines.join('\n');
+    if (landed) { $('r-intake-text').value = ''; $('r-intake-file').value = ''; }
+  } catch (e) {
+    out.textContent = 'Intake failed — ' + errOf(e);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Take it in';
+  }
+};
+
 $('r-refresh').onclick = async () => {
   if (!wallet) return;
   const btn = $('r-refresh'); btn.disabled = true; btn.textContent = 'Pulling…'; setMsg('');
@@ -1577,7 +2226,13 @@ $('r-cheques').addEventListener('click', async e => {
     params.nablaTcpAddresses = selectNablas(getCheckMode(), hint);
     const r = await withReceivePump(rhost, () => redeem(wallet, mkTransport(rhost, 'redeem'), chequeId, params, stepProgress('Redeem')));
     renderOverview();
-    setMsg(`Redeemed ${chequeId} · balance ${formatAxc(BigInt(r.newBalance))}`, 'ok');
+    // ForkSettlement §4 (R3) — informational: an origin still settling leaves a
+    // transient scar that clears by itself (sends meanwhile say "settling").
+    const settleNote = r.originSettlement === 'settling'
+      ? ` · sender's payment settles in ~${r.settlesInSecs} s` : '';
+    const refused = legRefusalNote(r) || heldNote(r);
+    setMsg(`Redeemed ${chequeId} · balance ${formatAxc(BigInt(r.newBalance))}${settleNote}`
+      + (refused ? ' — ' + refused : ''), refused ? 'warn' : 'ok');
     await receiveCycle();
   } catch (err) {
     setMsg('Redeem failed — ' + errOf(err), 'err');
@@ -1669,6 +2324,30 @@ function purgeMaildirCur() {
 }
 
 async function withReceivePump(host, fn) {
+  // ⚠ A NORMAL WALLET NEEDS NO PUMP. Its replies arrive on the held /session
+  // socket and session.js lands them in the SAME inbox the machines poll, so
+  // there is nothing to drain. Running the FATMAMA cycle for it would be worse
+  // than useless: `dev-fatmama` does not exist on a production validator, so
+  // every cycle would throw, and on a dev fleet it would pull another wallet's
+  // mailbox route. The class decides — see walletIsDev().
+  if (!walletIsDev()) {
+    // Witness replies arrive on the held /session socket (session.js) and need
+    // no pump. The CHEQUE does not: it is a DELIVERY, mailed by the validator's
+    // outbound carrier to this wallet's real address (see the banner in
+    // antie/src/gateway.rs). A browser cannot fetch that itself, so when the
+    // TEST fetcher is configured we drain it here; with no URL this is a no-op
+    // and the cheque simply never arrives, which is the honest state today.
+    let running = true;
+    const tf = (async () => {
+      while (running) {
+        try { await testFetchCycle(); } catch (_) { /* optional */ }
+        await sleep(1500);
+      }
+    })();
+    try { return await fn(); }
+    finally { running = false; try { await tf; } catch (_) {} purgeMaildirCur(); }
+  }
+
   const email = wallet.info().email;
   const walletDir = `${PARENT}/${wallet.info().name}`;
   let running = true;
@@ -1688,14 +2367,23 @@ async function withReceivePump(host, fn) {
 // pull the self-send cheque (TOT→FATMAMA) → CL5 redeem. The recv poll loop
 // runs the kiddo cycle (strips email → raw CBOR) + wallet.recv() until a
 // k-ready bundle appears, then redeems it.
-$('ov-claim').onclick = async () => {
+// ── ONE claim flow, parameterised (2026-09-07) ─────────────────────────────
+// The Overview button and the Validator tab both run THIS. The validator
+// claim differs only in the AMOUNT and the armed TIER — everything else
+// (auth gate, FATMAMA register, witness round, cheque wait, redeem) is
+// identical, and a second copy in JS would drift exactly like a second copy
+// in Rust. `tier`: 0 = ordinary airdrop, 2 = Foundation, 3 = Bootstrap.
+async function runGenesisClaim({ amountAtoms, tier = 0, btn, out, authReason }) {
   if (!wallet) return;
   if (coreLocked) { setMsg(LOCK_MSG, 'err'); return; }
-  if (!(await askKey('claim dev funds'))) return;   // re-auth gate
-  const btn = $('ov-claim'), out = $('c-out');
+  if (!(await askKey(authReason || 'claim dev funds'))) return;   // re-auth gate
   const host = ($('c-host').value.trim() || 'axiom-dev.mooo.com').replace(/:\d+$/, '');
   const log = m => { out.textContent += m + '\n'; };
   btn.disabled = true; out.textContent = '';
+  // §5.2.3 — arm the subsidy tier BEFORE the round. It must reach the
+  // fact-confirm leg or the pool grant silently no-ops while the transaction
+  // succeeds (the failure `fact_confirm.rs` predicted for this exact path).
+  try { wallet.setStakeClaimTier(tier); } catch (e) { log('could not arm tier: ' + e); btn.disabled = false; return; }
   showProg('Claiming dev funds…');
   try {
     const name = wallet.info().name;
@@ -1707,7 +2395,7 @@ $('ov-claim').onclick = async () => {
     const redeemTr = mkTransport(host, 'redeem');
     const common = {
       validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-      k: 3,
+      // no k — the WASM derives it from the artifact (YP §17.3.1.4, KI#150)
       inboxNew: `${maildir}/inbox/new`,
       inboxCur: `${maildir}/inbox/cur`,
       pollIntervalMs: 250,
@@ -1715,14 +2403,23 @@ $('ov-claim').onclick = async () => {
       nablaTcpAddresses: NABLAS,
     };
 
-    log(`Registering ${wallet.info().email} with FATMAMA…`);
-    await fatmamaRegister(`ws://${host}:7400/fatmama/0`, wallet.info().email).catch(() => {});
+    // ⚠ DEV ONLY. FATMAMA is the dev loopback SMTP tool; a real-email wallet's
+    // mail is carried by the validator's actual outbound carrier (SMTP to the
+    // provider / own-MX), so registering a FATMAMA mailbox for it is both
+    // meaningless and impossible on a production validator, where the
+    // `/fatmama` tunnel is compiled out (`dev-fatmama`). Missing this on
+    // 2026-09-07 made a PUBLIC wallet open the dev tunnel — caught by
+    // browser_real_email_claim_gate.py, which fails on a single fatmama socket.
+    if (walletIsDev()) {
+      log(`Registering ${wallet.info().email} with FATMAMA…`);
+      await fatmamaRegister(`ws://${host}:7400/fatmama/0`, wallet.info().email).catch(() => {});
+    }
 
     log('Fund + register (k=3 witness round over TOT)…');
     // The receive pump drains FATMAMA into the inbox throughout, so the
     // witness rounds (and the cheque) actually arrive.
     const r = await withReceivePump(host, async () => {
-      const claimRes = await claimGenesis(wallet, witnessTr, { ...common, amount: atomsPerAxc(), reference: 'sdk', offeredFee: 100n }, stepProgress('Fund'));
+      const claimRes = await claimGenesis(wallet, witnessTr, { ...common, amount: amountAtoms, reference: tier ? 'stake-claim' : 'sdk', offeredFee: 100n }, stepProgress('Fund'));
       log(`  txid ${String(claimRes.txid).slice(0, 16)}…  registered=${claimRes.registered}`);
       renderOverview();
 
@@ -1742,6 +2439,11 @@ $('ov-claim').onclick = async () => {
     });
     renderOverview();
     out.innerHTML += `<span class="ok">Done — balance ${formatAxc(BigInt(r.newBalance))}</span>`;
+    const refused = legRefusalNote(r) || heldNote(r);
+    if (refused) {   // textContent: the SDK message is never parsed as HTML
+      const w = document.createElement('span'); w.className = 'warn'; w.textContent = '\n' + refused;
+      out.appendChild(w);
+    }
   } catch (e) {
     out.innerHTML += `<span class="err">FAILED: ${errOf(e)}</span>`;
     console.error('[axiom] claim failed', e);
@@ -1749,7 +2451,146 @@ $('ov-claim').onclick = async () => {
     btn.disabled = false;
     hideProg();
   }
+}
+
+// ── Validator tab — SPECIAL FEATURES (informational) ──────────────────────
+//
+// A wallet client stays a wallet client (the owner, 2026-09-07). This tab explains
+// the validator stake and hands the operator their wallet; it does NOT claim.
+//
+// ⚠ WHY IT DOES NOT CLAIM, measured rather than assumed. A browser claim was
+// built and driven end to end on 2026-09-07. Core refused it with
+// `ValidatorJoinNoProvisionalVbc`: a subsidy claim requires a validator
+// CERTIFICATE first (§5.2.2b), which is the gate that stops an ordinary wallet
+// drawing from the pools.
+//
+// ⚠ CORRECTED 2026-09-07. This used to say "obtaining a certificate is a
+// validator operation, so a wallet cannot complete a claim by construction".
+// **The protocol contradicts that**: a VBC request is `TxKind::VbcRequest`, "an
+// ORDINARY transaction in every respect ... the ONLY difference is what the k=3
+// witnesses return: a certificate signed via CL8 instead of a value cheque"
+// (core/logic/src/types.rs §5.2.2d), and the certificate comes back on the
+// WitnessResponse as `vbc_signature`, "returned WHERE A CHEQUE WOULD GO" — i.e.
+// as a REPLY, which the held /session leg already carries. A wallet may request
+// one; a provisional VBC exists precisely so an unstaked candidate key can.
+//
+// The REAL reason the claim does not run here is DELIVERY: the claim's cheque is
+// MAILED to the wallet, and a browser cannot read a mailbox (see the banner at
+// the cheque dispatch in antie/src/gateway.rs). Sending would work; collecting
+// would not. Leaving a Claim button here would walk a user through an
+// irreversible-sounding confirm into a claim whose money never arrives.
+//
+// (The SDK work behind that attempt was still needed and is kept: the tier ->
+// TxKind mapping was a real defect — the browser driver had never made a
+// subsidy claim, so nothing had exercised it. The "CL1 discriminator fix" it
+// also produced is GONE: on 2026-09-07 the canonical encoder stopped
+// decomposing `kind` into `is_*` bools, so there are no discriminators for a
+// builder to get wrong. That is the actual fix; the one this comment used to
+// name was the symptom.)
+
+function renderValidatorTab() {
+  if (!wallet) return;
+  let lock = { locked: false, hibernationUntil: 0, wallClockLock: 0 };
+  try { lock = wallet.stakeLock(); } catch (_) {}
+  const banner = $('v-lockbanner'), detail = $('v-lockdetail');
+  if (!banner || !detail) return;
+
+  if (lock.locked) {
+    banner.classList.remove('hidden');
+    const wcl = Number(lock.wallClockLock) * 1000;
+    detail.innerHTML =
+      'A stake is claimed and locked in this wallet. You can still '
+      + '<b>receive</b>, but cannot send or redeem until the lock ends.<br>'
+      + 'Readable deadline: <b>' + (wcl ? new Date(wcl).toLocaleString() : 'unknown') + '</b>'
+      + '<div class="muted" style="margin-top:.3rem">The deadline the protocol enforces is a '
+      + 'tick count, not a clock; the date above is its readable face. There is no unlock '
+      + 'step — after it passes, your next send simply works.</div>';
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+$('v-export').onclick = () => {
+  // Export every stored byte for this wallet. There was no export in this app,
+  // and an earlier draft of this button delegated to a Settings button that does
+  // not exist — i.e. it would have LOOKED like an export and done nothing. So it
+  // is implemented here instead of pretending.
+  //
+  // ⚠ The bytes are exported EXACTLY AS STORED, which means the keystore stays
+  // VAULT-ENCRYPTED: the file is useless without the passphrase, which is what
+  // the card above promises. Do not "helpfully" decrypt on the way out.
+  if (!wallet) return;
+  const dump = {};
+  let n = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(FS)) continue;
+    dump[k.slice(FS.length)] = localStorage.getItem(k);
+    n++;
+  }
+  if (!n) { setMsg('nothing stored to export', 'err'); return; }
+  const payload = {
+    axiom_wallet_export: 1,
+    exported_at: new Date().toISOString(),
+    note: 'Encrypted as stored. Copy to the validator machine; the passphrase is required.',
+    email: (wallet.info && wallet.info().email) || null,
+    files: dump,
+  };
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `axiom-wallet-${(payload.email || 'wallet').replace(/[^a-z0-9]+/gi, '_')}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setMsg(`exported ${n} file(s) — still encrypted, keep the passphrase`, 'ok');
 };
+
+// §6b — register a certificate with Nabla from THIS wallet. The wasm builds
+// the signed request (it holds the key) and applies the reply; the bytes
+// travel over the same TOT /nabla tunnel every other Nabla call uses. Nabla's
+// refusal is shown verbatim — every node judges the same registered state,
+// so a refusal is the answer, not a reason to try the next node.
+$('v-register').onclick = async () => {
+  const out = $('v-reg-out'); out.textContent = '';
+  if (!wallet) { setMsg('open a wallet first', 'err'); return; }
+  const f = $('v-vbc').files && $('v-vbc').files[0];
+  if (!f) { setMsg('choose the certificate file (vbc-bundle.cbor) first', 'err'); return; }
+  const btn = $('v-register'); btn.disabled = true;
+  try {
+    // ValidatorJoin §6b.12 — the certificate file is Core's bundle in CBOR: bytes, never text.
+    const bundle = new Uint8Array(await f.arrayBuffer());
+    const req = wallet.buildRegisterVbcRequest(bundle);
+    const host = location.hostname || '127.0.0.1';
+    const transport = mkTransport(host, 'witness');
+    let stamped = null, lastErr = null;
+    for (const addr of NABLAS) {
+      let reply;
+      try { reply = await transport.nablaTcp(addr, req); }
+      catch (e) { lastErr = e; out.textContent += `${addr}: unreachable (${e.message || e})\n`; continue; }
+      // A decoded refusal throws with Nabla's status + reason; do not retry it.
+      stamped = wallet.applyRegisterVbcResponse(bundle, reply);
+      out.textContent += `${addr}: OK — stamped\n`;
+      break;
+    }
+    if (!stamped) throw lastErr || new Error('no Nabla node reachable');
+    const url = URL.createObjectURL(new Blob([stamped], { type: 'application/cbor' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'vbc-bundle.cbor';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setMsg('certificate registered — stamped vbc-bundle.cbor downloaded; copy it back to the validator config/', 'ok');
+  } catch (e) {
+    const m = (e && (e.message || e.msg)) || String(e);
+    out.textContent += `refused: ${m}\n`;
+    setMsg(`registration failed: ${m}`, 'err');
+  } finally { btn.disabled = false; }
+};
+
+$('ov-claim').onclick = () => runGenesisClaim({
+  amountAtoms: atomsPerAxc(), tier: 0,
+  btn: $('ov-claim'), out: $('c-out'), authReason: 'claim dev funds',
+});
 
 $('ov-refresh').onclick = () => { renderOverview(); toast('refreshed'); };
 $('h-refresh').onclick = () => { renderHistory(); toast('refreshed'); };
@@ -1767,7 +2608,7 @@ $('ov-heal').onclick = async () => {
     const maildir = `${PARENT}/${wallet.info().name}/maildir`;
     const params = {
       validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-      k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+      inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
       pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
     };
     const r = await withReceivePump(host, () => heal(wallet, mkTransport(host, 'witness'), params, stepProgress('Heal')));
@@ -1799,7 +2640,7 @@ $('ov-burn').onclick = async () => {
     const maildir = `${PARENT}/${wallet.info().name}/maildir`;
     const params = {
       validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-      k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+      inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
       pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
     };
     const r = await withReceivePump(host, () => burnScars(wallet, mkTransport(host, 'witness'), params, stepProgress('Burn')));
@@ -1826,12 +2667,14 @@ async function runHalOp(opFn, label, btn, out, verb, ttype = 'witness') {
     const maildir = `${PARENT}/${wallet.info().name}/maildir`;
     const params = {
       validators: ENV_VALIDATORS.map(([id, n]) => ({ validatorId: id, email: `${n}@axiom` })),
-      k: 3, inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
+      inboxNew: `${maildir}/inbox/new`, inboxCur: `${maildir}/inbox/cur`,
       pollIntervalMs: 250, pollMaxRounds: 720, nablaTcpAddresses: NABLAS,
     };
     const r = await withReceivePump(host, () => opFn(wallet, mkTransport(host, ttype), params, stepProgress(label)));
     renderOverview();
-    setMsg(`${label} done · balance ${formatAxc(BigInt(r.newBalance))}`, 'ok');
+    const refused = legRefusalNote(r) || heldNote(r);   // HAL/recall completion IS a redeem
+    setMsg(`${label} done · balance ${formatAxc(BigInt(r.newBalance))}`
+      + (refused ? ' — ' + refused : ''), refused ? 'warn' : 'ok');
   } catch (e) {
     out.innerHTML = `<span class="err">${errOf(e)}</span>`;
     setMsg(`${label} failed — ` + errOf(e), 'err');

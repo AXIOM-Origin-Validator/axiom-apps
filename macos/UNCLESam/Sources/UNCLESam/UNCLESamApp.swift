@@ -526,10 +526,11 @@ struct UNCLESamApp: App {
             NSLog("[real-send] sender=\(sender.config.displayName) tier=\(sender.tierAddress.prefix(28))…")
             NSLog("[real-send] receiver=\(receiver.config.displayName) tier=\(receiverAddr.prefix(28))…")
             NSLog("[real-send] sender balance atoms=\(sender.balanceAtoms)")
-            // Diagnostic: what does the SDK see for carrier pref +
-            // validator hints right now?
-            let currentPref = sdkGetCarrierPreference()
-            NSLog("[real-send] sdk carrier pref = \(currentPref)")
+            // Diagnostic: what has this app DECLARED it can deliver over,
+            // and what validator hints does the SDK hold right now?
+            // (was `sdkGetCarrierPreference` — the preference is gone, KI#154)
+            let declared = sdkDeclaredCarriers()
+            NSLog("[real-send] sdk declared carriers = \(declared)")
             let snapshot = sdkAppValidators()
             NSLog("[real-send] sdk validator hints count = \(snapshot.count)")
             let uncleCapable = snapshot.filter { hint in

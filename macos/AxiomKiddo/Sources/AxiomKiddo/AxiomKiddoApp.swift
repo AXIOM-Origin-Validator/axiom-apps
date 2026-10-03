@@ -213,6 +213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     ///
     ///   `axiomkiddo://provision?email=<e>&walletDir=<d>&label=<l>`
     ///     Auto-provision a dev/FATMAMA account for the given wallet.
+    ///   `axiomkiddo://prepare?email=<e>&walletDir=<d>&label=<l>`
+    ///     Real-mail sibling: create the account with everything the WALLET
+    ///     knows already filled in, and open Settings so the user types only
+    ///     the password. Never registers with FATMAMA, never starts a worker.
     ///     The wallet fires this during onboarding so the user never
     ///     has to hand-configure Kiddo for a local dev env. See
     ///     `provisionAccount` for the create-or-no-op logic.
@@ -249,6 +253,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 self.openSettingsWindow()
             case "provision":
                 self.provisionAccount(
+                    email: q("email"),
+                    walletDir: q("walletDir"),
+                    label: q("label")
+                )
+            case "prepare":
+                self.prepareEmailAccount(
                     email: q("email"),
                     walletDir: q("walletDir"),
                     label: q("label")
@@ -314,6 +324,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         store.add(acct)
         workers.start(account: acct)
         NSLog("AxiomKiddo: auto-provisioned dev account for \(email) at \(walletDir)")
+    }
+
+    /// Prepare a REAL-MAIL account from what the wallet already knows, and
+    /// open Settings so the user supplies only the secret.
+    ///
+    /// The owner, 2026-09-12: "it should launch from the axiomwallet and when try
+    /// setup the kiddo, the wallet address should passed into kiddo directly."
+    /// The address lives in the wallet; making someone retype it into another
+    /// app — exactly, or nothing works — is a step we can simply delete.
+    ///
+    /// NOT `provisionAccount`, and the difference matters: that one builds
+    /// from `devDefault` and forces `kind = .axiomDev`, i.e. plain SMTP/POP3
+    /// with no auth against the dev relay. Pointing it at a real address is
+    /// the kind/address mismatch that cost an evening — a button that can
+    /// only fail and an invisible 30s FATMAMA retry loop. This builds from
+    /// `emailDefault` (kind `.email`, TLS, 465/995) and fills in only what
+    /// the wallet told us.
+    ///
+    /// Deliberately does NOT start a worker. Without a password the account
+    /// cannot poll, and a running worker that fails every tick reads as
+    /// "configured" while doing nothing. The worker starts when the user
+    /// saves credentials, which is the moment it can actually work.
+    ///
+    /// Idempotent: an existing account for this address is left alone (its
+    /// credentials are the user's, not ours to overwrite) and Settings opens
+    /// on it.
+    private func prepareEmailAccount(email: String, walletDir: String, label: String) {
+        let email = email.trimmingCharacters(in: .whitespaces)
+        let walletDir = walletDir.trimmingCharacters(in: .whitespaces)
+        guard !email.isEmpty, !walletDir.isEmpty else {
+            NSLog("AxiomKiddo: prepare ignored — missing email or walletDir")
+            openSettingsWindow()
+            return
+        }
+
+        if let existing = store.accounts.first(where: {
+            $0.walletEmail.lowercased() == email.lowercased()
+        }) {
+            NSLog("AxiomKiddo: prepare no-op — account for \(email) already exists (label '\(existing.label)')")
+            store.focusRequest = existing.id
+            openSettingsWindow()
+            return
+        }
+
+        var acct = KiddoAccount.emailDefault
+        acct.walletEmail = email
+        acct.walletDir = walletDir
+        // The provider login is the address far more often than not; receiving
+        // is left blank, which means "same as sending".
+        acct.username = email
+        if !label.isEmpty { acct.label = label }
+        store.add(acct)
+        // Land the user ON it, or the form shows another draft and the
+        // prepared values look like they never arrived.
+        store.focusRequest = acct.id
+        NSLog("AxiomKiddo: prepared real-mail account for \(email) at \(walletDir) — awaiting credentials")
+        openSettingsWindow()
     }
 
     /// Owned NSWindowController for the Settings UI. Created lazily

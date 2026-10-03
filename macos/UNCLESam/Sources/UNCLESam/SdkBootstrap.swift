@@ -58,8 +58,13 @@ final class SdkBootstrap: ObservableObject {
                     .map { String($0.trimmingCharacters(in: .whitespaces)) }
                     .filter { !$0.isEmpty }
                 if !prefs.isEmpty {
-                    try? sdkSetCarrierPreference(prefs: prefs)
-                    NSLog("[UNCLESam] sdk carrier preference = \(prefs.joined(separator: ","))")
+                    // 2026-09-13 (KI#154): this is now a DECLARATION of what
+                    // UNCLESam can deliver over, not a preference the SDK acts
+                    // on. The SDK narrows validators to these carriers and
+                    // writes outbox/; UNCLESam's own transport must move the
+                    // bytes for every scheme listed here.
+                    try? sdkDeclareCarriers(carriers: prefs)
+                    NSLog("[UNCLESam] sdk declared carriers = \(prefs.joined(separator: ","))")
                 }
             }
             await MainActor.run {

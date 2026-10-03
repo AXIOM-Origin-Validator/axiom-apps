@@ -41,7 +41,11 @@ OUT = OUT_DIR / "axiom-wallet.html"
 # Each web module → the public functions it must expose as window globals.
 WEB_MODULES = [
     ("transport.js", ["makeTotTransport", "totConfigFrom"]),
-    ("kiddo.js", ["pop3FetchAll", "fatmamaRegister", "kiddoReceiveCycle"]),
+    ("kiddo.js", ["pop3FetchAll", "fatmamaRegister", "kiddoReceiveCycle", "stripEmailToCbor"]),
+    # The TOT /session reply leg for NORMAL (real-email) wallets. It imports
+    # stripEmailToCbor from kiddo.js, so kiddo MUST be inlined first and must
+    # export it — the single-file build has no module graph to resolve.
+    ("session.js", ["makeSessionPool"]),
     ("genesis.js", ["claimGenesis", "redeem", "claimAndRedeem", "send", "heal", "burnScars", "halReanchor", "halComplete", "recall", "recallComplete", "resumeSend"]),
     ("vault.js", ["VAULT"]),  # app-layer at-rest crypto; references global `nacl` (inlined into markup)
 ]
@@ -59,8 +63,10 @@ APP_REWRITES = [
      "const { setup, getCoreId, canonicalCoreId, Wallet, formatAxc, formatLdollarShort, sdkVersion, atomsPerAxc, kuaikuaiArt } = wasm_bindgen;"),
     ("const _init = _mod.default;",
      "const _init = wasm_bindgen;"),
-    ("const { fatmamaRegister, kiddoReceiveCycle } = await import('./kiddo.js?v=' + V);",
-     "// fatmamaRegister, kiddoReceiveCycle: bundled globals"),
+    ("const { fatmamaRegister, kiddoReceiveCycle, stripEmailToCbor } = await import('./kiddo.js?v=' + V);",
+     "// fatmamaRegister, kiddoReceiveCycle, stripEmailToCbor: bundled globals"),
+    ("const { makeSessionPool } = await import('./session.js?v=' + V);",
+     "// makeSessionPool: bundled global"),
     ("const { claimGenesis, redeem, send, sendWithScarPasscode, heal, burnScars, halReanchor, halComplete, recall, recallComplete, resumeSend } = await import('./genesis.js?v=' + V);",
      "// claimGenesis, redeem, send, sendWithScarPasscode, heal, burnScars, halReanchor, halComplete, recall, recallComplete, resumeSend: bundled globals"),
     ("const { makeTotTransport, totConfigFrom } = await import('./transport.js?v=' + V);",
@@ -86,8 +92,40 @@ def strip_exports(src: str) -> str:
     return re.sub(r"(?m)^export\s+", "", src)
 
 
-def wrap_module(src: str, exports: list[str]) -> str:
-    body = strip_exports(src)
+# Cross-module STATIC imports (`import { x } from './y.js'`). In the single-file
+# build every module is inlined as an IIFE that publishes its exports on
+# `window`, in WEB_MODULES order — so an import is satisfied by the global the
+# EARLIER module already exposed, and the statement itself must go: a bare
+# `import` inside a classic <script> is a syntax error.
+#
+# ⚠ FAIL LOUDLY, never silently drop. Dropping an import whose symbol is not
+# actually exposed would produce a page that loads and then throws
+# `x is not defined` at the moment the feature is used — which is how a webclient
+# ships broken and passes every surface check (2026-09-07).
+IMPORT_RE = re.compile(r"(?m)^import\s*\{([^}]*)\}\s*from\s*['\"][^'\"]+['\"]\s*;?\s*$")
+
+
+def strip_imports(src: str, fname: str, exposed: set[str]) -> str:
+    def check(m):
+        for sym in (x.strip() for x in m.group(1).split(",")):
+            if not sym:
+                continue
+            name = sym.split(" as ")[-1].strip()
+            if name not in exposed:
+                raise SystemExit(
+                    f"pack: {fname} imports {name!r}, which no EARLIER module in "
+                    f"WEB_MODULES exposes. Add it to that module's export list "
+                    f"(and make sure the module is listed BEFORE {fname})."
+                )
+        return ""
+    return IMPORT_RE.sub(check, src)
+
+
+def wrap_module(src: str, exports: list[str], fname: str = "", exposed: set[str] | None = None) -> str:
+    body = strip_exports(strip_imports(src, fname, exposed or set()))
+    if re.search(r"(?m)^\s*import\s", body):
+        raise SystemExit(f"pack: {fname} still contains an `import` after stripping — "
+                         f"only `import {{ … }} from '…'` is handled")
     assigns = "\n".join(f"window.{name} = {name};" for name in exports)
     return f"<script>\n;(function(){{\n{body}\n/* expose */\n{assigns}\n}})();\n</script>\n"
 
@@ -148,8 +186,11 @@ def main() -> int:
     # ── assemble: markup + glue + web-module IIFEs + de-moduled app ───────
     # `glue` was read up in the prelude block (reused for the Blob worker too).
     parts = [markup, f"<script>\n{glue}\n</script>\n"]
+    exposed: set[str] = set()
     for fname, exports in WEB_MODULES:
-        parts.append(wrap_module((WEB / fname).read_text(encoding="utf-8"), exports))
+        parts.append(wrap_module((WEB / fname).read_text(encoding="utf-8"),
+                                 exports, fname, exposed))
+        exposed.update(exports)   # available to modules inlined AFTER this one
     parts.append(
         "<script>\n;(async function(){\n"
         + app_body

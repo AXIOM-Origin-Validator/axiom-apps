@@ -63,12 +63,11 @@ final class SdkBootstrap: ObservableObject {
             let dir = defaultAppDir()
             exportBundledElfPath()
 
-            // Remote-first: fetch validators.list + nabla-nodes.list
-            // from axiom-dist when (a) we don't have local copies, or
-            // (b) the remote SEEDS_VERSION is newer than our cached
-            // one. Silent on network failure — falls through to the
-            // bundled .default below.
-            let seedsOk = await SeedFetcher.fetchSeedListsIfStale(appDir: dir)
+            // Remote-first: re-fetch validators.list + nabla-nodes.list
+            // from axiom-dist on EVERY launch (no version gate — see
+            // SeedFetcher). Silent on network failure — falls through to
+            // the bundled .default below.
+            let seedsOk = await SeedFetcher.fetchSeedListsAtLaunch(appDir: dir)
 
             // Bundled emergency fallback for anything the fetch
             // couldn't fill (offline-on-first-launch). Tiny (3 lines
@@ -86,6 +85,11 @@ final class SdkBootstrap: ObservableObject {
                 switch result {
                 case .success:
                     self.state = .ready
+                    // What this install can deliver over (CarrierChoice) —
+                    // declared before any send can happen. Empty until the
+                    // user has answered; the SDK then refuses to send with a
+                    // message naming the choice (no client default, KI#154).
+                    CarrierChoice.declareToSdk()
                     self.startJitWarmup()
                 case .failure(let e):
                     self.state = .failed(e.localizedDescription)

@@ -90,7 +90,10 @@ mkdir -p "$STAGE_DIR"
 # artifact. Swift fault UI is #if DEBUG (this build is debug → shown).
 bold "==> cargo build -p axiom-sdk-ffi --release --features chaos (dev lib)"
 cd "$WORKSPACE"
-cargo build -p axiom-sdk-ffi --release --features chaos
+# KI#240: core/logic register twins are the ONE rule's (dev-keyed tree -> core dev-mode,
+# ceremony-keyed -> none). The SDK no longer forces dev-mode through the AVM's features.
+FFI_FEAT="$(python3 "$WORKSPACE/scripts/build_profile.py" --features axiom-sdk-ffi)"
+cargo build -p axiom-sdk-ffi --release --features chaos $FFI_FEAT
 mkdir -p "$WORKSPACE/target/release"
 cp -f "$CARGO_TARGET_DIR/release/libaxiom_sdk_ffi.a" \
       "$CARGO_TARGET_DIR/release/libaxiom_sdk_ffi.dylib" "$WORKSPACE/target/release/"
@@ -121,7 +124,7 @@ build_app() {
         local ffi="$app_dir/Generated/AxiomSdkFFI"
         mkdir -p "$raw" "$sdk" "$ffi"
         cd "$WORKSPACE"
-        cargo run -p axiom-sdk-ffi --features chaos --bin uniffi-bindgen -- \
+        cargo run -p axiom-sdk-ffi --features chaos --bin uniffi-bindgen $FFI_FEAT -- \
             generate --library "$WORKSPACE/target/release/libaxiom_sdk_ffi.dylib" \
             --language swift --out-dir "$raw"
         cp "$raw/axiom_sdk_ffi.swift" "$sdk/"
@@ -209,8 +212,9 @@ build_app AxiomKiddo
 
 # ── Install to /Applications ──────────────────────────────
 #
-# Kill anything still running, blow away the prior /Applications
-# copy, install the fresh debug .app, strip Gatekeeper quarantine.
+# Kill anything still running, overwrite the prior /Applications copy IN
+# PLACE (never delete it — see the warning below), strip Gatekeeper
+# quarantine.
 bold "==> killing running AxiomKiddo / AxiomWallet (if any)"
 killall AxiomKiddo  2>/dev/null || true
 killall AxiomWallet 2>/dev/null || true
@@ -220,9 +224,25 @@ killall -9 AxiomKiddo  2>/dev/null || true
 killall -9 AxiomWallet 2>/dev/null || true
 
 bold "==> installing to /Applications"
-rm -rf /Applications/AxiomWallet.app /Applications/AxiomKiddo.app
-cp -R "$STAGE_DIR/AxiomWallet.app" /Applications/
-cp -R "$STAGE_DIR/AxiomKiddo.app"  /Applications/
+# ⚠ NEVER delete the installed bundle first. This used to be
+#     rm -rf /Applications/Axiom{Wallet,Kiddo}.app && cp -R ...
+# and on 2026-09-11 that cost a folder of wallets. An app-uninstaller
+# utility (Remove-It's "Ghost" watcher, a login item on this Mac) watches
+# /Applications for bundles disappearing and purges the matching support
+# folder — so deleting the bundle to reinstall it reads as an uninstall, and
+# ~/Library/Application Support/Axiom was wiped: seven wallet directories and
+# contacts.json, while the apps were mid-run. Same trap for `rsync --delete`
+# into a live bundle, which empties directories in place.
+#
+# `ditto` overwrites in place and never makes the bundle vanish, so no
+# watcher sees a removal. It does not prune files that exist only in the
+# installed copy; a build that renames or drops a resource can therefore
+# leave a stale file behind. That is the trade, and it is the right way
+# round — a stale resource is a rebuild away, a wiped wallet folder is not.
+# For a genuinely clean install, move the old bundle to the Trash by hand
+# with the watcher stopped, then run this.
+ditto "$STAGE_DIR/AxiomWallet.app" /Applications/AxiomWallet.app
+ditto "$STAGE_DIR/AxiomKiddo.app"  /Applications/AxiomKiddo.app
 
 # Strip Gatekeeper quarantine — the .app was just built locally,
 # not downloaded, but copying through staging can attach the

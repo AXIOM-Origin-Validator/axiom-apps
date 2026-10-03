@@ -951,7 +951,7 @@ private func fieldLabel(_ text: String) -> some View {
 }
 
 /// Shared dev passcode — same literal AxiomKiddo's SettingsView
-/// and the CarrierPreferences picker use for their dev gates.
+/// uses for its dev gate.
 /// Single passcode across all dev-toggle UX in the wallet.
 /// (The passcode UI itself is the inline `.devAuth` step of
 /// CreateNewPairForm — a nested `.sheet` presentation gets silently

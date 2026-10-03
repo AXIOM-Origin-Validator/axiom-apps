@@ -14,7 +14,13 @@ import Security
 //
 // Items are stored as kSecClassGenericPassword with
 //   kSecAttrService = "org.axiom.AxiomKiddo"
-//   kSecAttrAccount = <KiddoAccount.id.uuidString>
+//   kSecAttrAccount = <KiddoAccount.id.uuidString>[.<slot>]
+//
+// SLOT lets one account hold more than one secret. Sending and receiving are
+// frequently separate logins at the same provider (the owner, 2026-09-12: "often
+// the smtp and pop3/imap has different username and password"), so the
+// outbound secret keeps the bare id — every item written before slots existed
+// stays readable — and inbound uses `<id>.pop3`.
 //   kSecAttrAccessible = kSecAttrAccessibleAfterFirstUnlock
 //
 // First-unlock accessibility lets the menu-bar worker poll POP3 /
@@ -28,6 +34,12 @@ enum PasswordKeychain {
     /// Picked once and stable forever — changing it would orphan
     /// previously-stored items.
     static let service = "org.axiom.AxiomKiddo"
+
+    /// `<uuid>` for the outbound secret, `<uuid>.<slot>` for any other.
+    private static func key(_ id: UUID, _ slot: String?) -> String {
+        guard let slot, !slot.isEmpty else { return id.uuidString }
+        return "\(id.uuidString).\(slot)"
+    }
 
     enum KError: Error, LocalizedError {
         case osStatus(OSStatus)
@@ -44,12 +56,12 @@ enum PasswordKeychain {
     /// Insert or overwrite the password for one Kiddo account.
     /// Uses update-then-add so the second save of the same account
     /// doesn't fail with `errSecDuplicateItem`.
-    static func set(id: UUID, password: String) throws {
+    static func set(id: UUID, slot: String? = nil, password: String) throws {
         let data = Data(password.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: id.uuidString,
+            kSecAttrAccount as String: Self.key(id, slot),
         ]
         let update: [String: Any] = [
             kSecValueData as String: data,
@@ -77,11 +89,11 @@ enum PasswordKeychain {
     /// exists. Returns `nil` on any Keychain error so the worker can
     /// keep running with no password (it'll fail at AUTH PLAIN with a
     /// surfaceable 535 instead of crashing).
-    static func get(id: UUID) -> String? {
+    static func get(id: UUID, slot: String? = nil) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: id.uuidString,
+            kSecAttrAccount as String: Self.key(id, slot),
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -99,11 +111,11 @@ enum PasswordKeychain {
     /// entries are silently ignored. Called from
     /// `AccountStore.remove` so deleting a Kiddo account doesn't
     /// leave orphan keychain items.
-    static func delete(id: UUID) {
+    static func delete(id: UUID, slot: String? = nil) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: id.uuidString,
+            kSecAttrAccount as String: Self.key(id, slot),
         ]
         _ = SecItemDelete(query as CFDictionary)
     }

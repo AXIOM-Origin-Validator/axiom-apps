@@ -14,9 +14,16 @@ import AxiomSdk
 // the trust is the user's own.
 //
 // Maps 1:1 to the SDK FFI `NablaSelectionMode` (Default / Secure / Random).
-// The SDK setting is PROCESS-GLOBAL (mirrors carrier_preference), so the app
-// stores the mode per wallet and pushes it right before any incoming-payment
-// check (the redeem / verify_cheque path) — exactly like CarrierPreferences.
+// The SDK setting is PROCESS-GLOBAL, so the app stores the mode per wallet and
+// pushes it right before any incoming-payment check (the redeem / verify_cheque
+// path).
+//
+// ⚠ This USED to say "mirrors carrier_preference … exactly like
+// CarrierPreferences". CarrierPreferences WAS REMOVED
+// (AXIOM_DESIGN_CarrierBoundary.md, 2026-09-13): a carrier is a property of the
+// HOST, not of a wallet. THIS setting is different and stays — which Nabla
+// nodes verify an INCOMING cheque is genuinely a per-wallet receiver choice
+// (KI#34 WI2/WI5). Do not generalise from one to the other.
 //
 // The "previous Nabla" memory used by Secure lives in the SDK picker, not the
 // wallet — so there is nothing for the app to persist about which nodes were
@@ -70,9 +77,9 @@ enum IncomingCheckMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Persisted per-wallet incoming-check mode + SDK push helpers. Same shape
-/// as `CarrierPreferences` (UserDefaults keyed by wallet address, push to the
-/// process-global SDK runtime before the op).
+/// Persisted per-wallet incoming-check mode + SDK push helpers (UserDefaults
+/// keyed by wallet address, pushed to the process-global SDK runtime before
+/// the op). Legitimately per wallet — a receiver's caution level.
 enum IncomingCheckPreference {
     private static let keyFmt = "nabla_selection_mode.%@"
 

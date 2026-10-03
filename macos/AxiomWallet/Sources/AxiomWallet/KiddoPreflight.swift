@@ -144,6 +144,40 @@ enum KiddoPreflight {
     /// covers the "Kiddo from a stale build without the scheme"
     /// case — user lands on Kiddo's menu-bar icon and can take the
     /// last step manually, same as the old behaviour).
+    /// Hand off to Kiddo WITH what this wallet already knows — address,
+    /// wallet directory, label — so the user types only their password.
+    ///
+    /// The owner, 2026-09-12: "the wallet address should passed into kiddo
+    /// directly." Making someone retype an address into a second app, where
+    /// it has to match exactly or nothing works, is a step that can just be
+    /// deleted. Kiddo's `prepare` route creates the account as a REAL-MAIL
+    /// account (TLS, 465/995, no credentials) and opens Settings on it; it
+    /// never registers with FATMAMA and never starts a worker that cannot
+    /// work yet.
+    ///
+    /// Falls back to plain `axiomkiddo://settings` if the URL can't be built,
+    /// so the worst case is the old behaviour rather than a dead button.
+    static func openKiddoForSetup(walletEmail: String, walletDir: String, label: String) {
+        var c = URLComponents()
+        c.scheme = "axiomkiddo"
+        c.host = "prepare"
+        c.queryItems = [
+            URLQueryItem(name: "email", value: walletEmail),
+            URLQueryItem(name: "walletDir", value: walletDir),
+            URLQueryItem(name: "label", value: label),
+        ]
+        guard let url = c.url else {
+            openKiddoForSettings()
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: installPath),
+                                configuration: config) { _, error in
+            if error != nil { _ = launchKiddo() }
+        }
+    }
+
     static func openKiddoForSettings() {
         guard let url = URL(string: "axiomkiddo://settings") else {
             // Unreachable — literal URL is well-formed — but the
@@ -218,66 +252,14 @@ enum KiddoPreflight {
         }
     }
 
-    /// True when the wallet's `axiom.conf` points at a FATMAMA dev
-    /// SMTP host — the case where Kiddo can synthesise the account
-    /// without a password (FATMAMA accepts plain SMTP from any source).
-    ///
-    /// Bug B background: pre-fix, OnboardingView's auto-provision was
-    /// gated on `isDevEmail` (i.e. `@axiom.internal` only) because for
-    /// real-email wallets Kiddo can't know the SMTP/POP3 credentials.
-    /// But the bundled axiom.conf points at `axiom-dev.mooo.com:2525`
-    /// for any wallet — `@example.com` against the dev env is also
-    /// FATMAMA-served and equally safe to auto-provision. The user
-    /// reported smoke flow: send to a freshly-created `@example.com`
-    /// wallet that never claimed genesis, the receiver's Receive view
-    /// stays empty because FATMAMA drops every cheque (no XAXIOM-
-    /// REGISTER fired → no route → DROP at RCPT TO). Once Kiddo is
-    /// provisioned for that wallet, FATMAMA learns the route and
-    /// subsequent cheques flow.
-    ///
-    /// "Dev-safe" matches the host patterns FATMAMA is plausibly
-    /// running under in the dev / private-network world:
-    ///   - `axiom-` prefix (axiom-dev.mooo.com, axiom-dev, …)
-    ///   - `*.mooo.com` (the FreeDNS pattern this project uses)
-    ///   - loopback (`127.0.0.1`, `::1`, `localhost`)
-    ///   - private-network style (`*.internal`, `*.local`, `0.0.0.0`)
-    /// Real-ISP hosts (`smtp.gmail.com`, `outlook.office365.com`, etc.)
-    /// fall through to false — those need a password Kiddo can't know,
-    /// so manual configuration via Settings → + still wins.
-    ///
-    /// Reads `appDir/axiom.conf` line-by-line. Returns false on missing
-    /// file or unparseable contents — safer to skip auto-provision than
-    /// to create a stub account that can never poll.
-    static func smtpHostIsDevSafe(appDir: String) -> Bool {
-        let path = "\(appDir)/axiom.conf"
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return false
-        }
-        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
-            // `key = value`, whitespace-tolerant. We only care about
-            // `smtp_host`; everything else is skipped.
-            let parts = line.split(separator: "=", maxSplits: 1).map {
-                $0.trimmingCharacters(in: .whitespaces)
-            }
-            guard parts.count == 2, parts[0] == "smtp_host" else { continue }
-            let host = parts[1].lowercased()
-            if host.hasPrefix("axiom-")
-                || host.hasSuffix(".mooo.com")
-                || host == "localhost"
-                || host == "127.0.0.1"
-                || host == "::1"
-                || host == "0.0.0.0"
-                || host.hasSuffix(".internal")
-                || host.hasSuffix(".local")
-            {
-                return true
-            }
-            return false
-        }
-        return false
-    }
+    // `smtpHostIsDevSafe` lived here and is GONE (2026-09-12, the owner:
+    // "autoprovision should be only work for fatmama/dev account"). It let a
+    // dev-shaped SMTP host stand in for a dev ADDRESS, and its premise — that
+    // "@example.com against the dev env is also FATMAMA-served" — is false:
+    // FATMAMA drops any non-cluster domain at XAXIOM-REGISTER with a 550, so
+    // the account it enabled could never receive. Auto-provision now keys on
+    // the address alone. Do not reintroduce a host-shaped test here; if the
+    // dev-env receive path needs fixing, fix it where the address is decided.
 
     // MARK: - accounts.json decode
 

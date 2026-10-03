@@ -114,6 +114,32 @@ struct SmtpClient {
 
     // MARK: - SMTP plumbing
 
+    /// Connect, EHLO, authenticate if credentials are set, QUIT. Sends no
+    /// mail — the point is to learn whether the login is accepted before a
+    /// real message depends on it.
+    ///
+    /// A refused AUTH throws with the server's own reply, which is both what
+    /// the user needs to see and how the caller tells a refusal from a
+    /// failure to reach the server at all.
+    func verifyLogin() throws {
+        let conn = TcpConn(host: host, port: port,
+                           useTLS: useTLS, timeoutSecs: timeoutSecs)
+        try conn.connect()
+        defer { conn.close() }
+        _ = try smtpRead(conn)                        // greeting
+        try writeAndCheck(conn, "EHLO axiomkiddo\r\n", expect: 250)
+        if let u = username, let p = password, !u.isEmpty, !p.isEmpty {
+            var blob = Data([0])
+            blob.append(contentsOf: Array(u.utf8))
+            blob.append(0)
+            blob.append(contentsOf: Array(p.utf8))
+            try writeAndCheck(conn,
+                              "AUTH PLAIN \(blob.base64EncodedString())\r\n",
+                              expect: 235)
+        }
+        try? conn.writeAll(Data("QUIT\r\n".utf8))
+    }
+
     private func writeAndCheck(_ conn: TcpConn, _ cmd: String, expect: Int) throws {
         try conn.writeAll(Data(cmd.utf8))
         try self.expect(expect, smtpRead(conn))
@@ -299,6 +325,14 @@ final class TcpConn {
         if out.count >= 2 && out[0] == 0x2E && out[1] == 0x2E {
             out.remove(at: 0)
         }
+        return out
+    }
+
+    /// Read exactly `n` bytes (an IMAP literal `{n}`), from the buffer first.
+    func readExact(_ n: Int) throws -> Data {
+        while readBuffer.count < n { try readMore() }
+        let out = readBuffer.subdata(in: 0..<n)
+        readBuffer.removeSubrange(0..<n)
         return out
     }
 

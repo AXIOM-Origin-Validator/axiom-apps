@@ -75,9 +75,12 @@ echo "    $CANONICAL"
 # build.rs's rerun-if-env-changed=AXIOM_CANONICAL_CORE_ID makes this
 # a no-op when nothing changed; it's here so the test is self-contained.
 bold "==> rebuilding sdk-ffi with canonical baked"
+# KI#240: core/logic register twins are the ONE rule's (dev-keyed tree -> core dev-mode,
+# ceremony-keyed -> none). The SDK no longer forces dev-mode through the AVM's features.
+FFI_FEAT="$(python3 "$WORKSPACE/scripts/build_profile.py" --features axiom-sdk-ffi)"
 ( cd "$WORKSPACE" && \
   AXIOM_CANONICAL_CORE_ID="$CANONICAL" \
-  cargo build -q -p axiom-sdk-ffi --release )
+  cargo build -q -p axiom-sdk-ffi --release $FFI_FEAT )
 
 # ── (4) Pristine smoke ────────────────────────────────────
 bold "==> (4) smoke against pristine ELF — expect setup OK"

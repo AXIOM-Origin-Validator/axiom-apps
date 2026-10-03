@@ -30,6 +30,20 @@ final class AccountStore: ObservableObject {
     /// re-run their per-account sweep on every tick.
     @Published var reconcileGeneration: Int = 0
 
+    /// "Select this account in Settings, once."
+    ///
+    /// Set by `axiomkiddo://prepare` after it creates an account from what the
+    /// wallet handed over, so the user lands ON that account instead of
+    /// whatever row happened to be selected — which is how a prepared account
+    /// ended up looking empty: the values were on disk, the form was showing a
+    /// different draft (reported 2026-09-12, "the wallet directory still not
+    /// correctly create, it is still show <pair>-normal" — that string is the
+    /// field's PLACEHOLDER).
+    ///
+    /// The view clears it after acting, so it fires once and does not fight
+    /// the user's own clicks.
+    @Published var focusRequest: UUID?
+
     private let fileURL: URL = {
         let fm = FileManager.default
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -87,6 +101,7 @@ final class AccountStore: ObservableObject {
 
     func remove(_ id: UUID) {
         PasswordKeychain.delete(id: id)
+        PasswordKeychain.delete(id: id, slot: "pop3")
         accounts.removeAll { $0.id == id }
         save()
     }
@@ -101,6 +116,7 @@ final class AccountStore: ObservableObject {
         let count = accounts.count
         for a in accounts {
             PasswordKeychain.delete(id: a.id)
+            PasswordKeychain.delete(id: a.id, slot: "pop3")
         }
         accounts.removeAll()
         save()
@@ -116,14 +132,26 @@ final class AccountStore: ObservableObject {
     /// plaintext in memory so the worker can still authenticate from
     /// this session; the next save attempt will retry.
     private func commitPassword(_ a: inout KiddoAccount) {
-        guard !a.password.isEmpty else { return }
-        do {
-            try PasswordKeychain.set(id: a.id, password: a.password)
-            a.password = ""
-            a.hasKeychainPassword = true
-        } catch {
-            // Keep the plaintext in memory — better than losing it.
-            // Next save retries.
+        if !a.password.isEmpty {
+            do {
+                try PasswordKeychain.set(id: a.id, password: a.password)
+                a.password = ""
+                a.hasKeychainPassword = true
+            } catch {
+                // Keep the plaintext in memory — better than losing it.
+                // Next save retries.
+            }
+        }
+        // The inbound secret, when the provider needs a different one. Its own
+        // keychain slot; the outbound one keeps the bare id so nothing written
+        // before slots existed has to move.
+        if !a.pop3Password.isEmpty {
+            do {
+                try PasswordKeychain.set(id: a.id, slot: "pop3", password: a.pop3Password)
+                a.pop3Password = ""
+                a.hasPop3KeychainPassword = true
+            } catch {
+            }
         }
     }
 

@@ -54,7 +54,10 @@ fi
 # ── (1) cargo build the SDK FFI release lib ────────────────
 bold "==> cargo build -p axiom-sdk-ffi (release)"
 cd "$WORKSPACE"
-cargo build -p axiom-sdk-ffi --release
+# KI#240: core/logic register twins are the ONE rule's (dev-keyed tree -> core dev-mode,
+# ceremony-keyed -> none). The SDK no longer forces dev-mode through the AVM's features.
+FFI_FEAT="$(python3 "$WORKSPACE/scripts/build_profile.py" --features axiom-sdk-ffi)"
+cargo build -p axiom-sdk-ffi --release $FFI_FEAT
 
 if [ ! -f "$RUST_LIB" ]; then
     red "cargo did not produce $RUST_LIB"
@@ -68,7 +71,7 @@ SDK="$APP_DIR/Generated/AxiomSdk"
 FFI="$APP_DIR/Generated/AxiomSdkFFI"
 rm -rf "$APP_DIR/Generated"
 mkdir -p "$RAW" "$SDK" "$FFI"
-cargo run -p axiom-sdk-ffi --release --bin uniffi-bindgen -- \
+cargo run -p axiom-sdk-ffi --release --bin uniffi-bindgen $FFI_FEAT -- \
     generate --library "$RUST_DYLIB" \
     --language swift --out-dir "$RAW"
 cp "$RAW/axiom_sdk_ffi.swift" "$SDK/"

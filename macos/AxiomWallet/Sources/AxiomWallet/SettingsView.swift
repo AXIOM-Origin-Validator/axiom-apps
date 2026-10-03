@@ -686,8 +686,8 @@ private struct NetworkSection: View {
                     .lineSpacing(2)
             }
 
-            settingsCard(title: "Carrier preferences") {
-                CarrierPreferencesView()
+            settingsCard(title: "Carriers this app delivers") {
+                CarrierBoundaryCard()
             }
 
             settingsCard(title: "Incoming payment checks") {
@@ -695,7 +695,7 @@ private struct NetworkSection: View {
             }
 
             settingsCard(title: "Validator hints (validators.list + live)") {
-                Text("Bootstrap entries come from `~/Library/Application Support/Axiom/validators.list` (edit + restart to apply, or `Refresh seeds` to pull from axiom-dist). Carriers are live-learned from response payloads (YP §27.5) and cached at `~/Library/Application Support/Axiom/cache/validator_hints.vsp`. `seen` is the last time the wallet completed a witness round with the validator — gossip discovery alone does not count. Rows in italic are validators the wallet has heard about via gossip but doesn't have in its bootstrap list.")
+                Text("Bootstrap entries come from `~/Library/Application Support/Axiom/validators.list`, which is RE-FETCHED FROM axiom-dist ON EVERY LAUNCH — so a hand-edit to that file lasts only until the next start, and the published list is the one that counts. `Refresh seeds` pulls the same list mid-session. Carriers are live-learned from response payloads (YP §27.5) and cached at `~/Library/Application Support/Axiom/cache/validator_hints.v2.vsp`. `seen` is the last time the wallet completed a witness round with the validator — gossip discovery alone does not count. Rows in italic are validators the wallet has heard about via gossip but doesn't have in its bootstrap list.")
                     .font(DesignTokens.Typography.caption)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .lineSpacing(2)
@@ -1663,6 +1663,27 @@ private struct AdvancedSection: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var showBurnConfirm: Bool = false
     @State private var burnFeedback: String? = nil
+    // YPX-010 §12.9 — offline-settlement sweep + the discard it may lead to.
+    @State private var arkRows: [ArkPendingRow] = []
+    @State private var arkChecked: Bool = false
+    @State private var arkBusy: Bool = false
+    @State private var arkFeedback: String? = nil
+    @State private var arkDiscardTarget: ArkPendingRow? = nil
+    // YP-SDK §8.4.0 — the local supplemental-registration queue. Every tx is
+    // scarred until registration; these are the ones whose register hasn't
+    // landed yet. Strictly ordered: only the head can currently register.
+    @State private var regRows: [PendingRegistrationRow] = []
+    @State private var regBusy: Bool = false
+    @State private var regFeedback: String? = nil
+    /// Entry the user asked to burn — drives the two-step destructive confirm.
+    @State private var regBurnTarget: PendingRegistrationRow? = nil
+    /// Second step of the burn confirm (RecallConfirmSheet-style two-step:
+    /// the first dialog explains, this one takes the irreversible action).
+    @State private var regBurnConfirmArmed: Bool = false
+    /// User-visible switch for the automatic sweep. The sweep itself runs
+    /// inside the SDK on every send/redeem/heal; this records the user's
+    /// preference and drives whether we also sweep on opening this screen.
+    @AppStorage("axiom.autoRetryRegistrations") private var autoRetryRegistrations: Bool = true
     /// Last successful diagnostic-report file URL; populates the
     /// "Reveal in Finder" affordance + the "Wrote …" line.
     @State fileprivate var lastDiagnosticURL: URL? = nil
@@ -1914,9 +1935,13 @@ private struct AdvancedSection: View {
                     .lineSpacing(2)
             }
 
+            pendingRegistrationCard
+
             halCard
 
             recallCard
+
+            arkSettlementCard
 
             settingsCard(title: "Delete current wallet") {
                 Text("Removes the active wallet set (Normal + Ark) and its files from this Mac, then returns to the login screen. The wallet set cannot be recovered without its wallet_secret backup — make sure you have that before deleting.")
@@ -2261,6 +2286,410 @@ private struct AdvancedSection: View {
     // Two-step like HAL: recall (reservation → witnessed commit +
     // hibernate) then finish (redeem the recall cheque).
     @ViewBuilder
+    /// YPX-010 §12.9 — offline settlements that have not cleared, and the
+    /// local write-off for the one case that never will.
+    ///
+    /// The UX problem this solves is "ghost balance": an offline receive
+    /// credits the wallet optimistically at accept time, so if that credit's
+    /// source turns out to be a double-spend the wallet shows money the ledger
+    /// never had. The sweep names it; the discard removes it. Neither talks to
+    /// a validator, and neither can lose settled funds.
+    // ── Re-registration queue (YP-SDK §8.4.0) ───────────────────────
+    // Every transaction is scarred until it registers. Registration CLEARS
+    // the scar; it does not make the payment valid — the k=3 witness did
+    // that when it was sent. So an entry here is a normal state, and the
+    // copy below must not frighten the user into burning money.
+    //
+    // The one hard truth the UI has to convey: the queue is STRICTLY
+    // ORDERED. Nabla holds one head per wallet, so entry N+1 cannot land
+    // before entry N. Retrying a non-head entry is guaranteed to fail, and
+    // a UI that silently lets the user do it teaches them the feature is
+    // broken. Hence `is_head`, the disabled per-row retry, and the
+    // explanatory line.
+    private var pendingRegistrationCard: some View {
+        settingsCard(title: "Payments awaiting registration") {
+            Text("Every payment is recorded with the network in two steps: the validators witness it (that is what makes it valid and final), then it is registered so its record can be compacted later. Anything listed here has been witnessed and is valid — only the second step is outstanding. This is a normal state, not a lost payment.")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.textSecondary)
+                .lineSpacing(2)
+            Text("Registration is retried automatically whenever you send, receive or heal, oldest first, with a widening delay between attempts. You do not normally need this screen.")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.textSecondary)
+                .lineSpacing(2)
+
+            Toggle("Retry automatically in the background", isOn: $autoRetryRegistrations)
+                .font(DesignTokens.Typography.caption)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            Text(autoRetryRegistrations
+                 ? "On — the queue is also swept each time you open this screen."
+                 : "Off — the queue is still swept whenever you send, receive or heal (that is built into the protocol layer); only the extra sweep on opening this screen is disabled.")
+                .font(DesignTokens.Typography.micro)
+                .foregroundStyle(DesignTokens.textTertiary)
+                .lineSpacing(2)
+
+            if let fb = regFeedback {
+                Text(fb)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.statusScarredFg)
+            }
+
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                Button("Refresh") { loadPendingRegistrations() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(session.activeWallet == nil || regBusy)
+                Button("Retry all now") { runRegistrationSweep() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(session.activeWallet == nil || regBusy || regRows.isEmpty)
+                if regBusy { ProgressView().controlSize(.small) }
+            }
+
+            if regRows.isEmpty {
+                Text("Nothing awaiting registration — every payment is fully recorded.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.textSecondary)
+            } else if regRows.count > 1 {
+                Text("These register in order, oldest first. The one marked NEXT must go through before any below it can — that is how the network records a wallet's history, not a fault.")
+                    .font(DesignTokens.Typography.micro)
+                    .foregroundStyle(DesignTokens.textTertiary)
+                    .lineSpacing(2)
+            }
+
+            ForEach(regRows, id: \.txid) { row in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.sm) {
+                        Text(row.isHead ? "NEXT" : "waiting")
+                            .font(DesignTokens.Typography.caption)
+                            .foregroundStyle(row.isHead
+                                             ? DesignTokens.statusScarredFg
+                                             : DesignTokens.textTertiary)
+                        Text(row.amountKnown ? formatAxc(atoms: row.amount) : "amount unknown")
+                            .font(DesignTokens.Typography.labelStrong)
+                        Text(row.txid.prefix(16) + "…")
+                            .font(DesignTokens.Typography.micro)
+                            .foregroundStyle(DesignTokens.textTertiary)
+                        Spacer()
+                        Button("Retry") { runSingleRegistration(row) }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            // A non-head entry CANNOT register — Nabla only
+                            // accepts a register matching the head it holds.
+                            // Disable rather than let it fail and burn an attempt.
+                            .disabled(regBusy || !row.isHead)
+                        Button("Write off…") { regBurnTarget = row }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .tint(DesignTokens.statusRejectedFg)
+                            .disabled(regBusy)
+                    }
+                    HStack(spacing: DesignTokens.Spacing.sm) {
+                        Text(ageLabel(since: row.createdAt))
+                            .font(DesignTokens.Typography.micro)
+                            .foregroundStyle(DesignTokens.textTertiary)
+                        Text("· \(row.attempts) attempt\(row.attempts == 1 ? "" : "s")")
+                            .font(DesignTokens.Typography.micro)
+                            .foregroundStyle(DesignTokens.textTertiary)
+                        Text("· \(nextRetryLabel(row))")
+                            .font(DesignTokens.Typography.micro)
+                            .foregroundStyle(DesignTokens.textTertiary)
+                        if row.isGenesisClaim {
+                            Text("· first funding")
+                                .font(DesignTokens.Typography.micro)
+                                .foregroundStyle(DesignTokens.textTertiary)
+                        }
+                    }
+                    if !row.isHead {
+                        Text("Waiting on the payment above it.")
+                            .font(DesignTokens.Typography.micro)
+                            .foregroundStyle(DesignTokens.textTertiary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            Text("If one payment can never register, it blocks every payment behind it, and the only way to clear it is to write it off — which DESTROYS that payment's amount. Writing off is a last resort; it is not a repair, and it does not re-align anything behind it. HAL is not the tool for this (that is for a validator that has gone away).")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.textSecondary)
+                .lineSpacing(2)
+            Text("Spec: Yellow Paper SDK §8.4.0 — head-of-line blocking, and burn as the only escape · docs/AXIOM_YellowPaper_SDK.md")
+                .font(DesignTokens.Typography.micro)
+                .foregroundStyle(DesignTokens.textTertiary)
+                .lineSpacing(2)
+        }
+        .onAppear {
+            loadPendingRegistrations()
+            // "Automatic" is really the SDK's built-in sweep; opening this
+            // screen is the one place the user can see it happen, so sweep
+            // here too when they've left it on.
+            if autoRetryRegistrations && !regRows.isEmpty { runRegistrationSweep() }
+        }
+        // Step 1 of 2 — explain, and make the amount unmissable.
+        .confirmationDialog(
+            regBurnTarget.map { r in
+                r.amountKnown
+                    ? "Write off \(formatAxc(atoms: r.amount))?"
+                    : "Write off this payment?"
+            } ?? "Write off this payment?",
+            isPresented: Binding(
+                get: { regBurnTarget != nil && !regBurnConfirmArmed },
+                set: { if !$0 && !regBurnConfirmArmed { regBurnTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Continue…", role: .destructive) { regBurnConfirmArmed = true }
+            Button("Keep it queued", role: .cancel) { regBurnTarget = nil }
+        } message: {
+            Text("This DESTROYS that amount permanently. Do this only for a payment that can never be registered — it is the one way to unblock the payments behind it. It will not repair or re-align them; they still have to register in order.")
+        }
+        // Step 2 of 2 — the irreversible action, deliberately separate.
+        .confirmationDialog(
+            "This cannot be undone",
+            isPresented: Binding(
+                get: { regBurnConfirmArmed },
+                set: { if !$0 { regBurnConfirmArmed = false; regBurnTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Write it off — destroys value", role: .destructive) {
+                if let row = regBurnTarget { runRegistrationBurn(row) }
+                regBurnConfirmArmed = false
+                regBurnTarget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                regBurnConfirmArmed = false
+                regBurnTarget = nil
+            }
+        } message: {
+            Text(regBurnTarget.map { r in
+                r.amountKnown
+                    ? "\(formatAxc(atoms: r.amount)) will be destroyed."
+                    : "This payment's amount will be destroyed."
+            } ?? "")
+        }
+    }
+
+    /// "3 days ago" / "4 hours ago" / "just now" for a unix-seconds stamp.
+    private func ageLabel(since: UInt64) -> String {
+        let now = UInt64(Date().timeIntervalSince1970)
+        let secs = now > since ? now - since : 0
+        switch secs {
+        case 0..<60:        return "just now"
+        case 60..<3600:     return "\(secs / 60)m old"
+        case 3600..<86400:  return "\(secs / 3600)h old"
+        default:            return "\(secs / 86400)d old"
+        }
+    }
+
+    private func nextRetryLabel(_ row: PendingRegistrationRow) -> String {
+        if row.isReadyForRetry { return "ready to retry" }
+        let now = UInt64(Date().timeIntervalSince1970)
+        let wait = row.nextRetryAt > now ? row.nextRetryAt - now : 0
+        switch wait {
+        case 0..<60:       return "retries in \(wait)s"
+        case 60..<3600:    return "retries in \(wait / 60)m"
+        default:           return "retries in \(wait / 3600)h"
+        }
+    }
+
+    private func loadPendingRegistrations() {
+        guard let w = session.activeWallet else { regRows = []; return }
+        // Read-only, no network — safe to call on every appear.
+        regRows = w.pendingRegistrations()
+    }
+
+    private func runRegistrationSweep() {
+        guard let w = session.activeWallet else { return }
+        regBusy = true; regFeedback = nil
+        defer { regBusy = false }
+        do {
+            let s = try w.completePendingRegistrations(nablaTcpAddresses: [])
+            // KI#124 — an entry the mesh called a CONFLICTING state transition
+            // is DROPPED by the sweep, not registered. Without this branch it
+            // leaves the queue counted nowhere and the message below reads
+            // "Nothing to do", i.e. a permanent failure rendered as success.
+            if !s.permanentConflicts.isEmpty {
+                let n = s.permanentConflicts.count
+                regFeedback = "\(n) payment(s) can never be registered — that wallet state was already used by a different transaction. They have been removed from the queue; heal or write them off."
+            } else if s.succeeded > 0 && s.stillPending == 0 {
+                regFeedback = "Registered \(s.succeeded) payment(s). Nothing left waiting."
+            } else if s.succeeded > 0 {
+                regFeedback = "Registered \(s.succeeded); \(s.stillPending) still waiting. The rest are queued behind it."
+            } else if s.stillPending > 0 {
+                regFeedback = "Couldn't register yet — the network didn't accept the oldest one. It will keep retrying automatically."
+            } else if s.skippedThrottled > 0 {
+                regFeedback = "Not due for another attempt yet — the delay between retries widens each time."
+            } else if s.skippedNoNabla > 0 {
+                regFeedback = "No network nodes configured, so registration can't be attempted."
+            } else {
+                regFeedback = "Nothing to do."
+            }
+            loadPendingRegistrations()
+        } catch {
+            regFeedback = "Retry failed: \(extractFfiErrorParts(error).message)"
+        }
+    }
+
+    private func runSingleRegistration(_ row: PendingRegistrationRow) {
+        guard let w = session.activeWallet else { return }
+        regBusy = true; regFeedback = nil
+        defer { regBusy = false }
+        do {
+            let status = try w.completeRegistration(txidHex: row.txid, nablaTcpAddresses: [])
+            switch status {
+            case "confirmed":
+                regFeedback = "Registered. \(row.amountKnown ? formatAxc(atoms: row.amount) : "That payment") is now fully recorded."
+            case "skipped":
+                regFeedback = "No network nodes configured, so registration can't be attempted."
+            default:
+                regFeedback = "The network didn't accept it this time. It stays queued and will retry automatically."
+            }
+            loadPendingRegistrations()
+        } catch {
+            regFeedback = "Retry failed: \(extractFfiErrorParts(error).message)"
+        }
+    }
+
+    private func runRegistrationBurn(_ row: PendingRegistrationRow) {
+        guard let w = session.activeWallet else { return }
+        regBusy = true; regFeedback = nil
+        defer { regBusy = false }
+        do {
+            // burn_scars() burns the wallet's scarred links; an unregistered
+            // tx IS scarred by definition (KI#52), so this is the entry point
+            // §8.4.0 names. The SDK also drops the burned tx's queue entry,
+            // which is what actually unblocks the queue.
+            let burned = try w.burnScars()
+            regFeedback = burned > 0
+                ? "Wrote off \(burned) payment(s). Anything behind it can now register."
+                : "Nothing was written off — the payment may have registered in the meantime."
+            loadPendingRegistrations()
+        } catch {
+            regFeedback = "Couldn't write it off: \(extractFfiErrorParts(error).message)"
+        }
+    }
+
+    private var arkSettlementCard: some View {
+        settingsCard(title: "Offline settlements (Ark)") {
+            Text("Payments accepted while offline are credited straight away and settle later, when the network returns. Almost always that settles cleanly and there is nothing to do here. This screen is for the rare case where it cannot.")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.textSecondary)
+                .lineSpacing(2)
+            Text("If a payment shows as REFUSED, the sender spent the same money twice and someone else's copy settled first. That amount was never really yours — the balance shown while offline was provisional. Writing it off corrects the display; it does not spend, burn, or lose anything that had settled.")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.textSecondary)
+                .lineSpacing(2)
+
+            if let fb = arkFeedback {
+                Text(fb)
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.statusScarredFg)
+            }
+
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                Button(arkChecked ? "Check again" : "Check offline settlements…") {
+                    runArkSweep()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(session.activeWallet == nil || arkBusy)
+                if arkBusy { ProgressView().controlSize(.small) }
+            }
+
+            if arkChecked && arkRows.isEmpty {
+                Text("Nothing pending — every offline payment has settled.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.textSecondary)
+            }
+
+            ForEach(arkRows, id: \.id) { row in
+                HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.sm) {
+                    Text(arkStatusLabel(row.status))
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(row.status == "rejected"
+                                         ? DesignTokens.statusRejectedFg
+                                         : DesignTokens.textSecondary)
+                    Text(row.kind == "send" ? "sent" : "received")
+                        .font(DesignTokens.Typography.micro)
+                        .foregroundStyle(DesignTokens.textTertiary)
+                    Text(row.id.prefix(16) + "…")
+                        .font(DesignTokens.Typography.micro)
+                        .foregroundStyle(DesignTokens.textTertiary)
+                    Spacer()
+                    // Only a refused leg is written off. A pending or
+                    // bundle-received leg may still clear, and discarding one
+                    // throws away money that was merely slow.
+                    if row.status == "rejected" {
+                        Button("Write off…") { arkDiscardTarget = row }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .tint(DesignTokens.statusRejectedFg)
+                            .disabled(arkBusy)
+                    }
+                }
+            }
+
+            Text("Spec: Yellow Paper YPX-010 §12.9 — Ark reconciliation primitives · docs/AXIOM_YPX-010_ARK_CI.md. The sweep is read-only; the write-off is local and needs no validator.")
+                .font(DesignTokens.Typography.micro)
+                .foregroundStyle(DesignTokens.textTertiary)
+                .lineSpacing(2)
+        }
+        .confirmationDialog(
+            "Write off this refused payment?",
+            isPresented: Binding(
+                get: { arkDiscardTarget != nil },
+                set: { if !$0 { arkDiscardTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Write it off", role: .destructive) {
+                if let row = arkDiscardTarget { runArkDiscard(row) }
+                arkDiscardTarget = nil
+            }
+            Button("Keep waiting", role: .cancel) { arkDiscardTarget = nil }
+        } message: {
+            Text("This removes a credit that never settled — the sender's payment was refused because the same money had already been spent elsewhere. Your settled balance is unaffected. This cannot be undone, but nothing that had settled is lost.")
+        }
+    }
+
+    private func arkStatusLabel(_ status: String) -> String {
+        switch status {
+        case "cleared":         return "Settled"
+        case "pending":         return "Settling…"
+        case "bundle_received": return "Almost settled"
+        case "rejected":        return "REFUSED"
+        default:                return status
+        }
+    }
+
+    private func runArkSweep() {
+        guard let w = session.activeWallet else { return }
+        arkBusy = true; arkFeedback = nil
+        defer { arkBusy = false }
+        do {
+            // Read-only: /query-txid probes plus a wallet read. Registers nothing.
+            let rows = try w.arkPendingStatus(nablaTcpAddresses: [])
+            arkRows = rows.filter { $0.status != "cleared" }
+            arkChecked = true
+        } catch {
+            arkFeedback = "Couldn't check settlements: \(extractFfiErrorParts(error).message)"
+        }
+    }
+
+    private func runArkDiscard(_ row: ArkPendingRow) {
+        guard let w = session.activeWallet else { return }
+        arkBusy = true; arkFeedback = nil
+        defer { arkBusy = false }
+        do {
+            let atoms = try w.arkDiscard(id: row.id)
+            arkFeedback = "Wrote off a refused payment — \(atoms) atoms removed from the local view. Your settled balance is unchanged."
+            arkRows.removeAll { $0.id == row.id }
+        } catch {
+            arkFeedback = "Couldn't write it off: \(extractFfiErrorParts(error).message)"
+        }
+    }
+
     private var recallCard: some View {
         settingsCard(title: "RECALL — retract a payment (YPX-022)") {
             Text("RECALL retracts a payment the receiver hasn't redeemed yet — it doesn't matter whether the cheque reached them or not. The cheque is permanently cancelled and the amount returns to you. Once the receiver redeems, the payment is final and can't be recalled (redeem wins).")

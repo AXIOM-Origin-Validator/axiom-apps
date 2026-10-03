@@ -97,8 +97,9 @@ final class RedeemCoordinator: ObservableObject {
         // KI#34 WI2/WI5 — set THIS wallet's incoming-payment check mode on the
         // (process-global) SDK right before the redeem, which is the receive-side
         // verify_cheque path. Single-flight per wallet, so this set is exact; an
-        // in-flight check keeps the mode it already captured. Mirrors how the
-        // carrier picker pushes carrier_preference before driving an op.
+        // in-flight check keeps the mode it already captured. (This is the one
+        // per-wallet SDK setting left — the carrier picker that used to be
+        // pushed the same way is gone, KI#154.)
         IncomingCheckPreference.applyToSdk(for: wallet)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in

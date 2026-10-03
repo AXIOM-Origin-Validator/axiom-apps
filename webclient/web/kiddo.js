@@ -126,7 +126,10 @@ function decodeQuotedPrintable(s) {
 // raw: Uint8Array POP3 message (headers + base64-CBOR body, possibly SMTP
 // double-wrapped / quoted-printable). Returns Uint8Array of raw CBOR, or
 // null if it isn't a well-formed email body.
-function stripEmailToCbor(raw) {
+// EXPORTED for reuse by session.js — the TOT /session reply leg lands the same
+// carrier-wrapped bytes into the same inbox, and a second copy of this parser
+// would drift from it (RULE 1). One owner, two callers.
+export function stripEmailToCbor(raw) {
   let text = '';
   for (let i = 0; i < raw.length; i++) text += String.fromCharCode(raw[i]);
   const normalized = text.replace(/\r\n/g, '\n');

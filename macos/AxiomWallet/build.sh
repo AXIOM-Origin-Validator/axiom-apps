@@ -34,14 +34,17 @@ export CARGO_TARGET_DIR="${AXIOM_FFI_TARGET_DIR:-/tmp/axiom-build}"
 # or cargo rebuilds the lib WITHOUT chaos and overwrites the artifact the
 # app links. (Swift-side fault UI is gated by #if DEBUG, which aligns.)
 echo "==> Building Rust SDK FFI (release + chaos hooks for dev)..."
-cargo build -p axiom-sdk-ffi --release --features chaos
+# KI#240: core/logic register twins are the ONE rule's (dev-keyed tree -> core dev-mode,
+# ceremony-keyed -> none). The SDK no longer forces dev-mode through the AVM's features.
+FFI_FEAT="$(python3 "$WORKSPACE_ROOT/scripts/build_profile.py" --features axiom-sdk-ffi)"
+cargo build -p axiom-sdk-ffi --release --features chaos $FFI_FEAT
 mkdir -p "$WORKSPACE_ROOT/target/release"
 cp -f "$CARGO_TARGET_DIR/release/libaxiom_sdk_ffi.a" \
       "$CARGO_TARGET_DIR/release/libaxiom_sdk_ffi.dylib" "$WORKSPACE_ROOT/target/release/"
 
 echo "==> Regenerating Swift bindings..."
 mkdir -p "$RAW_DIR"
-cargo run -p axiom-sdk-ffi --release --features chaos --bin uniffi-bindgen -- \
+cargo run -p axiom-sdk-ffi --release --features chaos --bin uniffi-bindgen $FFI_FEAT -- \
     generate \
     --library "$WORKSPACE_ROOT/target/release/libaxiom_sdk_ffi.dylib" \
     --language swift \

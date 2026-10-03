@@ -18,10 +18,10 @@ import Foundation
 //
 // Bootstrap pipeline (`SdkBootstrap.run` on launch):
 //
-//   1. fetchSeedListsIfStale     (this file)
-//        — fetch SEEDS_VERSION from axiom-dist. If remote > local
-//          cached version, refresh both seed files. If local files
-//          are also empty/missing, refresh regardless of version.
+//   1. fetchSeedListsAtLaunch    (this file)
+//        — re-fetch both seed files from axiom-dist on EVERY launch.
+//          No version gate: the remote is authoritative for bootstrap
+//          and the local copy is a cache.
 //        — On network failure: silent no-op. Fall through to (2).
 //   2. seedHintFilesIfMissing    (AxiomWalletApp.swift)
 //        — fill anything (1) couldn't fetch from the bundled tiny
@@ -92,20 +92,40 @@ enum SeedFetcher {
     /// Behaviour matrix:
     ///   - remote_version > local_version: refresh both files,
     ///     update cache.
-    ///   - remote_version == local_version: still refresh files
-    ///     whose local copy is empty (offline-first-launch recovery).
-    ///   - remote SEEDS_VERSION 404 or unreachable: degrade to
-    ///     "missing file" semantics — same as the prior
-    ///     `fetchSeedListsIfMissing` behaviour.
+    /// ⚠ REFRESHES ON EVERY LAUNCH — no version gate (the owner, 2026-09-13:
+    /// "the seedlist should be refresh everytime when app started").
+    ///
+    /// It used to skip whenever the local file had content and the remote
+    /// SEEDS_VERSION was not greater. That made a correct republish
+    /// INVISIBLE: fix `validators.list` in axiom-dist, forget to bump
+    /// SEEDS_VERSION, and no wallet on earth ever sees it — silently, with
+    /// no error anywhere. That is exactly how the fleet spent from
+    /// 2026-09-10 to 2026-09-12 publishing `<node>@axiom` addresses that no
+    /// external client could resolve while every validator was reachable at
+    /// `<node>@trustmesh.org`.
+    ///
+    /// The remote is authoritative for bootstrap; the local copy is a cache.
+    /// Cost is one small GET per launch, already on a detached task.
+    ///
+    /// ⚠ CONSEQUENCE — a hand-edited `validators.list` no longer survives a
+    /// launch. That was a supported workflow (Settings said "edit + restart
+    /// to apply") and its text has been corrected. Anyone who needs a local
+    /// override should hold the wallet offline or fix the published list.
+    ///
+    /// Unchanged: a failed fetch keeps the local copy (offline launches are
+    /// silent no-ops), and a remote body that does not parse in the SDK's
+    /// current format is REJECTED rather than written — a malformed
+    /// axiom-dist must never brick `sdk_setup()`.
     /// Returns `true` when the seed lists are in good shape (freshly
     /// fetched, or an existing real copy left in place); `false` when a
     /// list the wallet had no real copy of couldn't be fetched — i.e.
     /// the wallet is dropping to the bundled `.default` floor. The
     /// caller surfaces a non-fatal "running on fallback" notice.
-    static func fetchSeedListsIfStale(appDir: String) async -> Bool {
+    static func fetchSeedListsAtLaunch(appDir: String) async -> Bool {
+        // SEEDS_VERSION is fetched for the log line and the cache stamp only.
+        // It is NOT a gate any more — see the ⚠ block above.
         let remoteVersion = await fetchInt("\(baseURL)/SEEDS_VERSION")
         let localVersion = localSeedsVersion(appDir: appDir)
-        let versionStale = remoteVersion.map { $0 > localVersion } ?? false
 
         let targets: [(remoteName: String, localName: String)] = [
             ("validators.list",  "validators.list"),
@@ -117,10 +137,8 @@ enum SeedFetcher {
         for t in targets {
             let dest = "\(appDir)/\(t.localName)"
             let missing = !fileHasUsableContent(at: dest)
-            // Skip iff we have content AND the remote isn't newer.
-            // Note: when remote version is unknown (404), we treat
-            // it as "not newer" so a working file is left alone.
-            if !missing && !versionStale { continue }
+            // NO SKIP. Every launch re-pulls. The version gate that used to
+            // live here is gone — see the ⚠ block above for why.
             guard let body = await fetchText("\(baseURL)/\(t.remoteName)"),
                   !body.isEmpty else {
                 // A list we needed couldn't be fetched. If we also have
@@ -150,11 +168,18 @@ enum SeedFetcher {
             }
         }
 
-        // Only stamp the cached version when we actually applied a
-        // refresh — otherwise an "all files up to date, remote
-        // version unchanged" launch would loop-write the same value.
+        // Stamp the cached version whenever we applied a refresh. The value
+        // no longer gates anything; it is kept because the Settings screen
+        // and the diagnostic report both show "seeds at version N", and
+        // because a version that moves is the cheapest signal that a
+        // republish actually landed.
         if refreshedAny, let v = remoteVersion {
             writeSeedsVersion(v, appDir: appDir)
+        }
+        if refreshedAny {
+            NSLog("%@", "[SeedFetcher] refreshed seed lists from axiom-dist "
+                + "(remote version \(remoteVersion.map(String.init) ?? "unknown"), "
+                + "local was \(localVersion))")
         }
         return !degraded
     }

@@ -65,7 +65,21 @@ struct OverviewView: View {
     /// heal flow the view caches stale scar counts until something
     /// in the body's observed state changes. This @State tick is
     /// that "something".
+    @State private var showDiscardRedeemConfirm: Bool = false
     @State private var refreshTick: Int = 0
+
+    /// §6 — the claim is paid as a CHEQUE, which is a delivery, so it needs a
+    /// mailbox that demonstrably works. Gated on the round trip having passed
+    /// for this wallet's address (`MailRoundTripProbe`), not on a mail account
+    /// merely existing: an account can be configured and unreachable, and that
+    /// used to surface here as a 60-second claim timeout with no explanation.
+    ///
+    /// A pass recorded on an earlier run counts — the evidence does not
+    /// evaporate because the app restarted.
+    private var mailProven: Bool {
+        guard let w = session.activeWallet else { return false }
+        return MailCheckRecord.hasPassed(walletEmail: w.email())
+    }
 
     /// True when the active wallet hasn't yet broadcast any TX (no
     /// genesis claim, no send, no redeem) OR has a saved pending
@@ -125,6 +139,14 @@ struct OverviewView: View {
     /// (`redeem` for pending cheques, `wait`, …) are not recovery
     /// triggers and are filtered out. Empty when the wallet is
     /// healthy or has no active wallet.
+    ///
+    /// ⚠ CORRECTED 2026-09-11 — the sentence above was written when `redeem`
+    /// meant only "you hold an unredeemed cheque". Since 2026-08-24 a SECOND
+    /// diagnose action shares `call == "redeem"`: an INTERRUPTED redeem, which
+    /// blocks send() and every other redeem() until it resolves. Filtering it
+    /// out here is still right (it is not heal/burn), but it is emphatically a
+    /// recovery trigger — it gets its own banner via `pendingRedeemChequeId`,
+    /// keyed off the FFI getter so the two `redeem` actions can't be confused.
     private var healActions: [AppDiagnoseAction] {
         guard let w = session.activeWallet,
               let actions = try? w.diagnose() else { return [] }
@@ -157,6 +179,22 @@ struct OverviewView: View {
         return actions.first { $0.action == "inherited_scar_wait" }
     }
 
+    /// §14 — the cheque id of an OUTSTANDING interrupted redeem, or nil.
+    ///
+    /// While this is non-nil the SDK refuses `send()` and every OTHER
+    /// `redeem()` with `PendingRoundOutstanding`: the guard that stops a
+    /// stale-state divergence. It is the most blocking condition the wallet
+    /// can be in, and until 2026-09-11 the Mac surfaced NOTHING for it — the
+    /// user saw only a raw refusal on their next send.
+    ///
+    /// Keyed off the FFI getter, NOT `diagnose()`: TWO diagnose actions carry
+    /// `call == "redeem"` (this one and the ordinary unredeemed-cheque hint)
+    /// and only this one blocks the wallet, so filtering on `call` would
+    /// raise the banner on a perfectly healthy wallet holding a cheque.
+    private var pendingRedeemChequeId: String? {
+        session.activeWallet?.pendingRedeemChequeId()
+    }
+
     var body: some View {
         // Read refreshTick so SwiftUI tracks it as a body dependency.
         // Sheet `onCompletion` callbacks bump this to force a fresh
@@ -183,6 +221,9 @@ struct OverviewView: View {
                 pairHeader
                 balanceHero
                 statusRow
+                if let blocking = pendingRedeemChequeId {
+                    pendingRedeemCallout(blocking)
+                }
                 if let broken = factChainBrokenAction {
                     corruptionCallout(broken)
                 }
@@ -267,12 +308,12 @@ struct OverviewView: View {
         guard case .noAccountForEmail = KiddoPreflight.checkNow(walletEmail: email) else {
             return
         }
-        guard KiddoPreflight.smtpHostIsDevSafe(appDir: defaultAppDir()) else {
-            // Real-ISP SMTP — auto-provision would create a broken
-            // stub. Leave it to the user to configure in Kiddo
-            // Settings → +.
-            return
-        }
+        // Same ruling as onboarding's `maybeAutoProvision` (2026-09-12): only
+        // a DEV address is auto-provisioned. FATMAMA refuses every other
+        // domain, so provisioning one here produced an account that looked
+        // configured and could never receive. A real address is configured by
+        // its owner in Kiddo Settings → +.
+        guard walletClass(ofEmail: email) == .devClass else { return }
         // Wallet dir mirrors OnboardingView's construction:
         // `<defaultWalletDir()>/<pairName>-normal`. The `-normal`
         // suffix is the Normal-wallet half of every pair (the Ark
@@ -499,10 +540,13 @@ struct OverviewView: View {
                 .controlSize(.regular)
                 .disabled(versionSkew.isSdkTooOld
                           || releaseUpdate.mustUpgradeCore
+                          || !mailProven
                           || claimCoordinator.isClaiming
                           || sendCoordinator.isSending
                           || redeemCoordinator.isRedeeming)
-                .help(releaseUpdate.mustUpgradeCore
+                .help(!mailProven
+                      ? "Set up mail first — the claim is paid as a cheque, and it needs somewhere to arrive. Finish the mail step, then check it works."
+                      : releaseUpdate.mustUpgradeCore
                       ? "Claim disabled — the network upgraded its Core. Claiming on a mismatched Core would diverge your wallet from the network and can damage it (YP §23.10). Update the wallet first."
                       : versionSkew.isSdkTooOld
                       ? "Claim disabled — wallet build is older than the network's minimum protocol version (mesh v\(versionSkew.serverProtocolVersion), wallet v\(versionSkew.clientProtocolVersion)). Update first."
@@ -540,6 +584,78 @@ struct OverviewView: View {
     // signal the scar DID carry over (it's on the redeem link) even though
     // the own-scar count reads 0. Amber (scarred) palette, not red — the
     // money is fine, its provenance is just still pending.
+    // ── Interrupted-redeem banner (§14, added 2026-09-11) ──────────────────
+    //
+    // The SDK persists a pending-redeem marker when a redeem is interrupted
+    // after it registered its cheque claim, and refuses every later send /
+    // redeem until the round resolves. RETRY IS THE FIRST AFFORDANCE: the
+    // retry reuses the round's own attestation and claim proof and ADOPTS the
+    // committed result, which is why re-querying by hand self-refuses for
+    // ~24 h (CHEQUE_CLAIM_EXPIRY_TICKS — Nabla cannot tell the claimant from
+    // an attacker). Discard is the escape hatch below it, never the default:
+    // it drops the adoption bookkeeping, not the cheque.
+    private func pendingRedeemCallout(_ chequeId: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "arrow.clockwise.circle.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(DesignTokens.statusRejectedFg)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("A redeem was interrupted — finish it first")
+                    .font(DesignTokens.Typography.bodyStrong)
+                    .foregroundStyle(DesignTokens.statusRejectedFg)
+                Text("Sending and any other redeem are paused until this one finishes — that pause is what keeps your wallet from diverging from the network. Retry it: the wallet reuses the same round and adopts whatever already went through.")
+                    .font(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.textSecondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button("Retry now") { retryPendingRedeem(chequeId) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(redeemCoordinator.isRedeeming
+                                  || sendCoordinator.isSending
+                                  || claimCoordinator.isClaiming)
+                    Button("Give up on it…") { showDiscardRedeemConfirm = true }
+                        .buttonStyle(.bordered)
+                        .disabled(redeemCoordinator.isRedeeming)
+                }
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(EdgeInsets(top: DesignTokens.Spacing.sm, leading: DesignTokens.Spacing.md, bottom: DesignTokens.Spacing.sm, trailing: DesignTokens.Spacing.md))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignTokens.statusRejectedBgSoft)
+        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.panel))
+        .alert("Give up on this redeem?", isPresented: $showDiscardRedeemConfirm) {
+            Button("Give up", role: .destructive) { discardPendingRedeem() }
+            Button("Keep trying", role: .cancel) { }
+        } message: {
+            Text("The cheque is NOT lost — it stays in Receive and can be redeemed again. What you lose is the wallet's record of the interrupted round, which is what lets a retry pick up a redeem that already went through. Only do this after retrying has genuinely failed.")
+        }
+    }
+
+    /// Retry the blocked cheque through the normal redeem coordinator — the
+    /// SAME call the Receive pane makes. Amount and sender are display-only
+    /// (the banner it drives), so an unmatched bundle is not a reason to
+    /// refuse the retry.
+    private func retryPendingRedeem(_ chequeId: String) {
+        guard let w = session.activeWallet else { return }
+        let bundle = w.listPendingChequeBundles().first { $0.chequeId == chequeId }
+        redeemCoordinator.start(
+            wallet: w,
+            chequeId: chequeId,
+            amountAtoms: bundle?.amount ?? 0,
+            sender: bundle?.sender ?? ""
+        )
+    }
+
+    /// §14 — client-initiated, never automatic. Local file removal only; no
+    /// protocol effect and no network call.
+    private func discardPendingRedeem() {
+        session.activeWallet?.discardPendingRedeem()
+        refreshTick &+= 1
+    }
+
     private func inheritedScarCallout(_ action: AppDiagnoseAction) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "link.circle.fill")

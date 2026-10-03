@@ -8,6 +8,77 @@ the binary it runs.
 The `dist/` directory itself is gitignored (binary artifacts don't go
 in source); this file is the tracked record.
 
+## Clients · Core `d891b2b3` — rotation #11 (KI#152 (b)) · wallet 2.37.0 / Kiddo 2.17.0
+
+CoreID **ROTATED** `4c81b614` → `d891b2b3` (Core refuses a subsidised stake
+claim not addressed to the claimant's Standard-tier address,
+`E_STAKE_CLAIM_TIER_INVALID` 1011, YP §40.3 v2.19.1). **MANDATORY** update
+(CoreID-keyed): 2.36.0 bakes `4c81b614` and is wire-incompatible with the
+fleet. Ships the two apps TOGETHER on purpose: the SDK in 2.37.0 writes a
+`<stem>.carriers` sidecar beside each outbox `.eml` (CarrierHandoff §9.3) and
+Kiddo 2.17.0 is the first Kiddo that skips it in the outbox scan — an older
+Kiddo would parse the sidecar as mail and quarantine it. Also in 2.17.0:
+IMAP inbound (`ImapClient`, folder-scoped, same retention closures as POP3).
+Also in 2.37.0: `discover_validators` on the FFI, seed lists re-fetched on
+every launch (v19 `@trustmesh.org` addresses), the carrier-boundary onboarding
+question. Unrecorded intermediate builds 2.34.0 (published, broken `@axiom`
+seed), 2.35.0 and 2.36.0 (`4c81b614`) are superseded — do not publish them.
+arm64-only, dev/test — mainnet hold not lifted.
+
+  axiomwallet-d891b2b3-2.37.0.dmg  (AxiomWallet 2.37.0 + AxiomKiddo 2.17.0)
+    sha256 daa3a995ff28abe476f44e4899528264474bc8fbd02a74d4eda9b146251e582d
+    built 2026-09-13 on Mac from `44a3aa7f` (mac-2.37.0-d891b2b3, base master `2dac5905`)
+    release `axiomwallet-d891b2b3-2.37.0-20260913` — https://github.com/AXIOM-Origin-Validator/axiom-dist/releases/tag/axiomwallet-d891b2b3-2.37.0-20260913 (axiom-dist)
+
+## Clients · Core `6d1874cf` — KI#38 SDK fix (send seq-proofs replicate) · wallet 2.29.0 / webclient 3.4.0
+
+CoreID **ROTATED** `7dade818` → `6d1874cf` on the published clients (catching up
+across the `8639481f`/`b5151adb`/`0c27d7c0` dev rotations to the deployed env
+CoreID; the never-published 2.26.0/2.27.0/2.28.0 builds at intervening CoreIDs
+are all superseded — do not publish them). **MANDATORY** update (CoreID-keyed).
+The load-bearing change is the **KI#38 SDK fix**: the faithful-receipt copy
+dropped `confidence_index` from the wire `K3Receipt`, so every k=3 send from
+older clients ships seq proofs that fail mesh-wide (`CARRIED-BUT-FAILED`) —
+registers succeed but the head cannot replicate over flood/AE until the
+wallet's next op on a fixed client. Consolidated into
+`axiom_sdk_core::types::k3_receipt_from_canonical` (one builder + a
+commitment-recompute regression test). Also first build carrying the wasm
+no_std fix (`state_sig.rs` — every webclient build had been broken since
+`82e9422d`).
+
+  axiomwallet-6d1874cf-2.29.0.dmg
+    sha256 b058572a43b905900935d6a2c35cfd93eb969b6ad1ed83149975c34d854137b3
+    release axiomwallet-6d1874cf-2.29.0-20260801 (axiom-dist)
+  webclient-6d1874cf-3.4.0.html / .zip
+    sha256 53591691d03000af9dc1990d003e438acf2a8accca7ef3d8e93ec1825efd23e8 /
+           f4a73b2d77c86b09caf86667f28733b1124588e1f76d01f5f3dadfc252c02741
+    gh-pages + releases.json `web.webclient` (never `products`)
+
+Mac-verified before publish: ELF in the .app BLAKE3s to `6d1874cf` (not
+rebuilt); chaos not compiled in (positive-control grep); Ark discard surface
+present; signed "AXIØM TrustMesh Project"; `sdkSetup()` gate proven both ways
+(refuses a swapped `b5151adb` ELF). Webclient live-smoked against the env
+(claim→redeem settled, "Core 6d1874cf… · sdk 3.4.0"). Worldline flipped
+`7dade818` → `6d1874cf` by the publish script (idempotent, after
+releases.json). Workspace crate moved 3.3.0 → 3.4.0 (lambda/nabla inherit —
+their next build renames artifacts; reviewed and approved). Published 2026-08-02 from
+master `3ca30dfb` (merge `52787530`).
+
+## Clients · Core `7dade818` — Ark offline double-spend graduated · wallet 2.25.0 / webclient 3.3.0
+
+CoreID **ROTATED** `b77fd28a` → `7dade818` (client catch-up across the Ark Phase 3/4 dev rotations to the deployed env CoreID). `7dade818` is the Ark offline-⟠-trade graduation: the offline double-spend is caught, the fork loser refused via consume-once and correctly out the money, conservation atom-exact — with no burn and no protocol change (design of record `docs/AXIOM_YPX-010_ARK_CI.md` §12; full detail in the CLAUDE.md "Current State (Ark … GRADUATED — `7dade818`)" section). **MANDATORY** update (a different CoreID hard-locks old clients; the intervening Ark rotations were receipt-commitment/formula breaks, so a pre-`7dade818` wallet self-invalidates on upgrade — wipe-equivalent, expected pre-mainnet). The 2.25.0 client loads pre-`7dade818` wallets without crashing; update policy is CoreID-keyed (mismatch → mandatory, unreachable-worldline → not-mandatory so offline users aren't stranded, no timer → no prompt-loop). Client-binary publish only — bundles the COMMITTED ELF (BLAKE3 == `7dade818…131290`, verified); no Ark source pushed to public code repos. Env already live on `7dade818` (`verify_deploy` ALL VERIFIED); the DMG passed a live genesis→send→redeem smoke on that env. Worldline flipped `b77fd28a` → `7dade818`. Webclient republished `webclient-7dade818-3.3.0` (canonical-CoreID wasm gate baked — prior webclient publishes shipped an empty setup() gate; this build closes that). **NOT related to** the Nabla prioritized-inbox-drain fix (`08d298c5`, CoreID-neutral).
+
+- **DMG**: `axiomwallet-7dade818-2.25.0.dmg` SHA-256 `aeae712f18b92d8c5d6b2b5e0b16e0b8d99b2eaa19a847d6edeee86356dff2e2`
+  Release: https://github.com/AXIOM-Origin-Validator/axiom-dist/releases/tag/axiomwallet-7dade818-2.25.0-20260724 (releases.json `products.axiomwallet` → 2.25.0)
+- **Webclient**: `webclient-7dade818-3.3.0.{html,zip}` (releases.json `web.webclient` → 3.3.0); Pages https://axiom-origin-validator.github.io/axiom-dist/
+
+## Clients · Core `b77fd28a` — burn-proof binding · wallet 2.24.2 / kiddo 2.15.0 / webclient 3.3.0
+
+CoreID **ROTATED** `5f5a6797` → `b77fd28a`. One guest-ELF change: `burn_target_tx_id` is now folded into `compute_fact_commitment` (via a zero sentinel, like `sender_anchor`), so the k=3 witnesses SIGN which scar a burn destroys. This closes the burn-proof **COPY forge** (a genuine 1-atom burn proof could previously be copied onto a 1000-atom scar and read `is_resolved()`, enabling a wash-out) and makes inherited taint **holder-burnable** (a receiver stuck with Nabla-confirmed-but-inherited-tainted value may burn it to un-stick their wallet, taking the loss). **MANDATORY** update (a different CoreID hard-locks old clients; the FACT-commitment formula change also self-invalidates pre-rotation client FACT chains). Env deployed with **RETAINED** data (no `clean --data` — no persisted consensus commitment embeds `compute_fact_commitment`); `verify_deploy.sh` ALL VERIFIED; live genesis+send+redeem + scar-consent gate validated. Worldline flipped `5f5a6797` → `b77fd28a`. Accept-set blesses prior `d0900069` (unchanged from `5f5a6797`). Source + docs published (axiom-core `core-b77fd28a`, axiom-docs, sibling repos v3.3.0). Webclient republished `webclient-b77fd28a-3.3.0`.
+
+- **DMG**: `axiomwallet-b77fd28a-2.24.2.dmg` SHA-256 `488aaff996b58a45ffc2d005abc61a1dadba59961572a3934065b9de4227f98c`
+  Release: https://github.com/AXIOM-Origin-Validator/axiom-dist/releases/tag/axiomwallet-b77fd28a-2.24.2-20260717 (releases.json `products.axiomwallet` → 2.24.2)
+
 ## Clients · Core `5f5a6797` — Ark single-keypair convergence · wallet 2.24.1 / kiddo 2.15.0 / webclient 3.3.0
 
 CoreID **ROTATED** `ce00aacc` → `5f5a6797`. Two guest-ELF changes: genesis `state_id` is now tier-aware (`… ‖ k ‖ proof_type`) and the §11.9 Ark rules use `verify_pk_binding` (not email strings) + a new W7 (online Ark→Ark → `ArkOnlineTradeRejected`). This lands the single-keypair model — the Ark wallet is the k=0 tier address of the SAME keypair (YPX-010 §10), with Lambda wallet-state re-keyed by `(pk, k, proof_type)`. **MANDATORY** update (a different CoreID hard-locks old clients). Env deployed with `rotate --wipe` (fresh genesis — the genesis-formula change makes old state un-loadable); env smoke `genesis_claim_smoke.py` passed E2E. Worldline flipped `ce00aacc` → `5f5a6797`. Accept-set blesses prior `d0900069` (not `ce00aacc` — moot, env wiped). DMG SHA-256 `a1f2c1087785f8288b378974a3559be1adbda9193d8e6a57b0002e61393f0fcb`; tag `axiomwallet-5f5a6797-2.24.1-20260717`. Webclient republished `webclient-5f5a6797-3.3.0`. Includes the macOS address-book fix (one row per wallet — new pairs share one address).

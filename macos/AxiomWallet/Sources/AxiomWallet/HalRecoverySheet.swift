@@ -324,7 +324,7 @@ struct HalRecoverySheet: View {
     private func gateThenRun() {
         guard !walletKey.isEmpty else { return }
         let email = session.activeWallet?.email() ?? ""
-        kiddoGate.check(email: email) { runAction() }
+        kiddoGate.check(email: email, walletDir: session.activePair.map { "\(defaultWalletDir())/\($0.name)-normal" }) { runAction() }
     }
 
     private func runAction() {

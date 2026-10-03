@@ -53,21 +53,59 @@ if [ -f "$CANON_ID_FILE" ]; then
         exit 1
     fi
     echo "=== [0/4] CoreID assert OK — ELF_SRC == canonical ${CANON_ID:0:16}… ==="
+    # Bake the canonical CoreID into the wasm, exactly as release-dmg.sh does for
+    # the wallet. `sdk/wasm`'s setup() compares the loaded ELF's CoreID against
+    # `axiom_core_logic::version::CANONICAL_CORE_ID` — an `option_env!` constant
+    # that is EMPTY unless this var is set at build time, which makes the gate a
+    # no-op and leaves the pin resting entirely on the build-time asserts. Set it
+    # so a post-ship ELF swap fails closed IN THE CLIENT, at load, with a clear
+    # message (same posture as the DMG). `core/logic/build.rs` registers
+    # `cargo:rerun-if-env-changed=AXIOM_CANONICAL_CORE_ID`, so the constant
+    # refreshes on a rotation with no manual `cargo clean`.
+    export AXIOM_CANONICAL_CORE_ID="$CANON_ID"
+    echo "    baking canonical CoreID into the wasm gate"
+
+    # ⚠ THE BLESSED PRIORS MUST RIDE WITH THE PIN. Without this the wasm ships a
+    # pin-only accept-set — EMPTY — so the browser wallet accepts ONLY the
+    # current CoreID and refuses every receipt minted under a blessed prior,
+    # while the native SDK (which gets both) accepts them. Same failure the
+    # nabla release build has: "pin-only = EMPTY accept-set".
+    # Measured 2026-09-07: the shipped wasm carried CoreID 34f331d3 and ZERO
+    # priors. `core/logic/src/version.rs` reads this via `option_env!`, exactly
+    # like the canonical pin above.
+    BLESSED_FILE="$SCRIPT_DIR/../../core/artifacts/BLESSED_PRIOR_CORE_IDS.txt"
+    if [ -f "$BLESSED_FILE" ]; then
+        # ONE comma-separated line — a multi-line file collapses into a single
+        # invalid 128-hex string that blesses NOTHING, silently.
+        export AXIOM_BLESSED_PRIOR_CORE_IDS="$(tr -d '[:space:]' < "$BLESSED_FILE")"
+        echo "    blessing $(echo "$AXIOM_BLESSED_PRIOR_CORE_IDS" | tr ',' '\n' | grep -c .) prior CoreID(s)"
+    else
+        echo "WARN: $BLESSED_FILE missing — the wasm will accept ONLY the current CoreID." >&2
+    fi
 else
     echo "WARN: $CANON_ID_FILE missing — skipping CoreID assert (cannot verify ELF)." >&2
 fi
+
+# ── KI#240: the web wallet is the SDK too — its core/logic register twins are the
+# ONE rule's (scripts/build_profile.py: dev-keyed tree -> core dev-mode, ceremony-
+# keyed -> none), so it stamps the same lock windows the ELF checks. Until KI#240
+# sdk/wasm got core dev-mode implicitly through the AVM's `disable-audit`.
+WASM_FEAT=($(python3 "$SCRIPT_DIR/../../scripts/build_profile.py" --features axiom-sdk-wasm))
+CARGO_EXTRA=()
+[ ${#WASM_FEAT[@]} -gt 0 ] && CARGO_EXTRA=(-- "${WASM_FEAT[@]}")   # bash-3.2-safe expansion below (macOS)
+echo "    tuning profile: $(python3 "$SCRIPT_DIR/../../scripts/build_profile.py")"
 
 # ── [1/4] Web-target wasm (ES modules) — backs the HTTP build (web/ + pkg/) ──
 # Build the sdk/wasm crate, but drop its output (pkg/) into THIS app dir so the
 # frontend + pack.py find it as a sibling. --out-dir is absolute, so it lands
 # here regardless of where the crate lives.
 echo "=== [1/4] wasm-pack (web target) → pkg/ ==="
-wasm-pack build "$PROFILE" --target web --out-dir "$SCRIPT_DIR/pkg" --out-name axiom_sdk_wasm "$CRATE_DIR"
+wasm-pack build "$PROFILE" --target web --out-dir "$SCRIPT_DIR/pkg" --out-name axiom_sdk_wasm "$CRATE_DIR" ${CARGO_EXTRA[@]+"${CARGO_EXTRA[@]}"}
 cp "$ELF_SRC" pkg/axiom-core.elf
 
 # ── [2/4] no-modules wasm — backs the single-file bundle (global wasm_bindgen) ─
 echo "=== [2/4] wasm-pack (no-modules) → pkg-nomod/ ==="
-wasm-pack build "$PROFILE" --target no-modules --out-dir "$SCRIPT_DIR/pkg-nomod" --out-name axiom_sdk_wasm "$CRATE_DIR"
+wasm-pack build "$PROFILE" --target no-modules --out-dir "$SCRIPT_DIR/pkg-nomod" --out-name axiom_sdk_wasm "$CRATE_DIR" ${CARGO_EXTRA[@]+"${CARGO_EXTRA[@]}"}
 cp "$ELF_SRC" pkg-nomod/axiom-core.elf
 
 # ── [3/4] Single self-contained file (double-click, runs from file://) ──
@@ -78,7 +116,20 @@ python3 pack.py
 echo "=== [4/4] assembling dist/http/ ==="
 rm -rf dist/http
 mkdir -p dist/http/web dist/http/pkg
-cp web/index.html web/genesis.js web/transport.js web/kiddo.js web/cl-worker.js web/vault.js web/nacl.min.js dist/http/web/
+# ⚠ A NEW web module must be registered in THREE places or it ships broken:
+#   1. here (the hosted dist/http/web/ copy),
+#   2. pack.py WEB_MODULES (the single-file build inlines it as an IIFE),
+#   3. pack.py DYNAMIC_IMPORTS (the app's `await import()` is rewritten away).
+# Missing (1) 404s the import in the hosted build; missing (2)/(3) leaves ES
+# module syntax in a classic <script>. Both were hit adding session.js on
+# 2026-09-07; the guard below is what turns (1) from a silent 404 into a
+# build failure.
+cp web/index.html web/genesis.js web/transport.js web/kiddo.js web/session.js web/cl-worker.js web/vault.js web/nacl.min.js dist/http/web/
+
+# Every `./x.js` the app imports must have landed in the hosted copy.
+for _m in $(grep -oE "import\('\./[a-z-]+\.js" web/index.html | sed "s|.*'\./||"); do
+    [ -f "dist/http/web/$_m" ] || { echo "FAIL: web/index.html imports $_m but it was not copied into dist/http/web/ — add it to the cp above" >&2; exit 1; }
+done
 cp pkg/axiom_sdk_wasm.js pkg/axiom_sdk_wasm_bg.wasm pkg/axiom-core.elf dist/http/pkg/
 
 # ── [5/5] Canonical publish identity — webclient-<coreid>-<version> ──

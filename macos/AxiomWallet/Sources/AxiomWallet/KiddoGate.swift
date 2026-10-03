@@ -45,6 +45,13 @@ final class KiddoGate: ObservableObject {
     /// the launch path's re-check so callers don't have to re-supply.
     private var pendingEmail: String = ""
 
+    /// The wallet directory that email belongs to, when the caller knew it.
+    /// Needed to hand the address to Kiddo (`axiomkiddo://prepare` wants the
+    /// directory too — it is named after the PAIR and cannot be derived from
+    /// an address). Optional so a caller that doesn't know it still compiles,
+    /// and simply falls back to opening plain Settings.
+    private var pendingWalletDir: String?
+
     /// The closure to run once Kiddo passes the check. Cleared on
     /// success and on cancel.
     private var onProceed: (() -> Void)?
@@ -53,7 +60,8 @@ final class KiddoGate: ObservableObject {
     /// immediately. Otherwise stashes the state + closure so the
     /// alert can render and the launch path can finish what was
     /// started.
-    func check(email: String, onProceed: @escaping () -> Void) {
+    func check(email: String, walletDir: String? = nil, onProceed: @escaping () -> Void) {
+        pendingWalletDir = walletDir
         let state = KiddoPreflight.checkNow(walletEmail: email)
         if case .ready = state {
             onProceed()
@@ -89,7 +97,24 @@ final class KiddoGate: ObservableObject {
 
     /// "Open Kiddo Settings" handler — for the `.noAccountForEmail`
     /// state, the user needs to add an account, not relaunch the app.
+    /// Hand the address over when the caller told us which wallet it is;
+    /// otherwise plain Settings.
+    ///
+    /// This gate is the path a user actually hits — it fires from Send,
+    /// Receive, Heal, HAL and Recall, i.e. every attempt to transact without
+    /// a Kiddo account. It was the one handoff still making the user retype
+    /// their address into another app, which is exactly what got reported
+    /// (the owner, 2026-09-12: "the email address was not passed").
     func openKiddoSettings() {
+        if let dir = pendingWalletDir, !pendingEmail.isEmpty {
+            let label = (dir as NSString).lastPathComponent
+                .replacingOccurrences(of: "-normal", with: "")
+            KiddoPreflight.openKiddoForSetup(walletEmail: pendingEmail,
+                                             walletDir: dir,
+                                             label: label)
+            cancel()
+            return
+        }
         KiddoPreflight.openKiddoForSettings()
         cancel()
     }

@@ -4,7 +4,7 @@
 // Promise cannot hold the wallet's `&mut self` borrow across an await:
 //
 //   wallet.claimGenesisFund(transport, params) -> Promise<outcome>   (network)
-//   wallet.commitGenesisFund(stateId, receipt, factChain)            (local, sync)
+//   wallet.commitGenesisFund(stateId, receipt, factChain, hibUntil)  (local, sync)
 //
 // `claimGenesis()` chains them so callers (the "Claim dev funds" button)
 // see one async call. Every outbound payload is a typed-UMP WitnessRequest
@@ -16,7 +16,7 @@
 //   reference,       // string — e.g. "sdk"
 //   offeredFee,      // BigInt — atoms (>= MIN_OFFERED_FEE)
 //   validators,      // [{ validatorId: hex64, email }]   (TOT-supported only)
-//   k,               // number — witnesses required (3 for genesis)
+//   (no k — the WASM derives the round's k from the artifact, YP §17.3.1.4 KI#150)
 //   inboxNew,        // "maildir/inbox/new"
 //   inboxCur,        // "maildir/inbox/cur"
 //   pollIntervalMs,  // number — inbox poll backoff
@@ -50,6 +50,10 @@ export async function claimGenesis(wallet, transport, params, onStep) {
     hexToBytes(outcome.producedStateIdHex),
     outcome.receiptCbor,
     outcome.factChainCbor,
+    // §5.2.2c — the stake lock window a tier-2/3 claim's state carries (BigInt;
+    // 0n for an airdrop). Required: without it the wallet's state disagrees
+    // with the k-signed receipt.
+    outcome.producedHibernationUntil,
   );
 
   // Nabla register now runs INSIDE claimGenesisFund (after the witness
@@ -70,7 +74,7 @@ export async function claimGenesis(wallet, transport, params, onStep) {
 
 // Redeem a stored cheque bundle: redeemFund (async/network) → commitRedeem
 // (sync/local credit). Same fund→commit split rationale as claimGenesis.
-// `redeemParams`: { validators, k, nablaTcpAddresses, inboxNew, inboxCur,
+// `redeemParams`: { validators, nablaTcpAddresses, inboxNew, inboxCur,
 // pollIntervalMs, pollMaxRounds }. Returns the credited balance.
 export async function redeem(wallet, transport, chequeId, redeemParams, onStep) {
   const before = wallet.balance; // BigInt — to compute the credited delta
@@ -84,6 +88,21 @@ export async function redeem(wallet, transport, chequeId, redeemParams, onStep) 
     outcome.factChainCbor,
     chequeId,
   );
+  // Fork Settlement W7e — record the register ack's provenance on the wallet
+  // (so diagnose() offers the burn exit of a HELD state) and relay the
+  // diagnose() line for the held cheque(s). Text only — nothing is burned.
+  let heldReason = null;
+  try {
+    if (outcome.provenance && outcome.provenance !== 'not_reported') {
+      wallet.recordProvenance(outcome.provenance, outcome.heldCheques || []);
+    }
+    if (outcome.provenance === 'held') {
+      const held = outcome.heldCheques || [];
+      heldReason = (wallet.diagnose() || [])
+        .filter(a => held.includes(a.detail) || (a.action === 'held' && !held.length))
+        .map(a => a.reason).join(' ') || null;
+    }
+  } catch (_) { /* record/report only — never fail the committed op */ }
   // Record the credit (covers both a genesis self-redeem and a normal
   // receive — one entry, no double-count with the fund phase).
   recordHistory(wallet, String(chequeId).split(':')[0], 'Redeem',
@@ -93,6 +112,17 @@ export async function redeem(wallet, transport, chequeId, redeemParams, onStep) 
     newBalance: outcome.newBalance,
     registered: outcome.registered,
     balance: wallet.balance, // now credited
+    // ForkSettlement §4 (R3) — the SDK's settle report, relayed as-is.
+    originSettlement: outcome.originSettlement,
+    settlesInSecs: outcome.settlesInSecs,
+    // Fork Settlement W7e-a — set when the redeem is credited (k-signed) but
+    // its Nabla registration was refused: the leg did not reproduce the
+    // validators' commitment (registered === false). Relayed as-is.
+    redeemLegRefusal: outcome.redeemLegRefusal || null,
+    // Fork Settlement W7e — "ok" | "settling" | "held" | "not_reported".
+    provenance: outcome.provenance,
+    heldCheques: outcome.heldCheques || [],
+    heldReason,
   };
 }
 
@@ -107,7 +137,7 @@ export async function claimAndRedeem(wallet, transport, claimParams, redeemParam
 
 // Normal send: sendFund (async/network — build TX → CL1 → k-witness round
 // over TOT → register) → commitSend (sync/local debit). `amountAtoms` is a
-// BigInt; `params` = { validators, k, nablaTcpAddresses, inboxNew, inboxCur,
+// BigInt; `params` = { validators, nablaTcpAddresses, inboxNew, inboxCur,
 // pollIntervalMs, pollMaxRounds }. Returns the new (debited) balance.
 export async function send(wallet, transport, to, amountAtoms, reference, params, onStep) {
   return await sendInner(wallet, transport, to, amountAtoms, reference, params, onStep);

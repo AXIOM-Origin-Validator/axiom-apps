@@ -100,24 +100,37 @@ apps/macos/AxiomKiddo/
     ├── WorkerRegistry.swift   live worker collection, status fan-in
     ├── EnvelopeParser.swift   From: / To: extraction from EML headers
     ├── SmtpClient.swift       minimal RFC 5321 (+ TcpConn helper)
-    ├── Pop3Client.swift       minimal RFC 1939
+    ├── Pop3Client.swift       minimal RFC 1939 (plain or POP3S)
+    ├── PasswordKeychain.swift provider passwords in the macOS Keychain (Phase 3)
+    ├── FatmamaRegister.swift  one-shot dev-env account provisioning with FATMAMA
+    ├── FatmamaRoutes.swift    its companion: dev-env route teardown
+    ├── KiddoTokens.swift      design-token layer (mirrors AxiomWallet's)
+    ├── KuaikuaiOverlay.swift  the version-label easter egg (see root README)
     └── SettingsView.swift     master/detail account editor
 ```
 
 ## v0 limits (deliberate)
 
-- **No TLS.** Plain SMTP and POP3 only. Sufficient for the dev env;
-  production deployments need TLS-enabled clients before this is
-  safe to point at anything beyond localhost.
-- **No AUTH.** POP3 password defaults to a placeholder; FATMAMA
-  accepts anything. Production: USER/PASS or APOP plus credentials
-  in Keychain.
+- **TLS on the receiving side only.** `Pop3Client` / `ImapClient` do
+  implicit TLS (995 / 993) for real providers and plain TCP for FATMAMA;
+  `SmtpClient` is plain SMTP — fine for the dev relay, not for a public
+  submission port.
+- **POP3 AUTH is USER/PASS** (no APOP), with provider passwords held in
+  the macOS Keychain (`PasswordKeychain.swift`, Phase 3) rather than in
+  `accounts.json`; FATMAMA accepts anything.
 - **One wallet per account.** Multi-wallet support is a follow-up.
 - **No security-scoped bookmarks.** The wallet directory is just a
   path string. Required only if Kiddo gets sandboxed for App Store
   distribution — not on the v0 roadmap.
-- **POP3 only inbound.** IMAP (with IDLE for push-style delivery) is
-  step 4 of the migration plan.
+- **IMAP is poll-only (2.17.0).** `ImapClient` scopes to one folder
+  (`inboundProtocol` + `imapFolder` per account) under the same retention
+  closures as POP3; deletion is `\Deleted` + one `EXPUNGE` at session end.
+  IDLE (push-style delivery) is not implemented — the poll interval is the
+  latency.
+- **Outbox sidecars.** The SDK writes `<stem>.carriers` beside each
+  `<stem>.eml` (the target validator's advertised carriers, for a transport
+  that is not this one). Kiddo skips it in the scan and moves it with its
+  `.eml` through sending/sent/failed; it is never shipped.
 
 ## Build outputs
 

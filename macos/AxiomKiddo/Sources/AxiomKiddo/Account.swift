@@ -1,4 +1,5 @@
 import Foundation
+import KiddoPolicy
 
 // =================================================================
 // Account — one mail-gateway configuration.
@@ -25,6 +26,28 @@ import Foundation
 enum AccountKind: String, Codable, Equatable {
     case email
     case axiomDev
+}
+
+extension RetentionMode {
+    /// The default for a NEW account of this kind. Lives here, not in
+    /// `KiddoPolicy`, so the policy library stays free of account types.
+    ///
+    /// A dev mailbox is scratch — the developer carrier reclaims
+    /// unregistered routes anyway — so draining it is right. A real mailbox
+    /// gets the conservative default, because the cost of being wrong there
+    /// is someone's mail.
+    ///
+    /// ⚠ NOT what an existing account gets: accounts written before the
+    /// field decode to `.deleteAll` in `init(from:)` below, which is the
+    /// behaviour they have had all along. A silent switch to a new default
+    /// would stop draining mailboxes that have been drained for months, and
+    /// they would start re-delivering.
+    static func defaultFor(kind: AccountKind) -> RetentionMode {
+        switch kind {
+        case .axiomDev: return .deleteAll
+        case .email:    return .axiomOnly
+        }
+    }
 }
 
 struct KiddoAccount: Codable, Identifiable, Equatable {
@@ -77,11 +100,39 @@ struct KiddoAccount: Codable, Identifiable, Equatable {
     var password: String = ""
     var hasKeychainPassword: Bool = false
 
+    /// Inbound (POP3) login, when the provider uses a different one from
+    /// sending. Blank means "same as sending" — most providers, and the
+    /// behaviour every account had before these fields existed.
+    ///
+    /// Kept separate rather than assumed identical because they frequently
+    /// are not (the owner, 2026-09-12). `pop3Password` is transient exactly like
+    /// `password`: decoded for one-shot migration, never written back to
+    /// accounts.json, and stored in the keychain under the `pop3` slot.
+    var pop3Username: String = ""
+    var pop3Password: String = ""
+    var hasPop3KeychainPassword: Bool = false
+
+    /// Which protocol collects inbound mail. POP3 drains a whole mailbox;
+    /// IMAP scopes to `imapFolder` and keeps everything unless retention
+    /// says otherwise (CarrierHandoff §9.5). An account written before this
+    /// field existed decodes to `.pop3`, which is what it was doing.
+    var inboundProtocol: InboundProtocol = .pop3
+    /// IMAP only: the folder Kiddo watches. `INBOX` unless the user routes
+    /// AXIOM mail elsewhere with a provider-side rule.
+    var imapFolder: String = "INBOX"
+
     /// How often to poll POP3 in seconds. The dev env's FATMAMA
     /// snapshot-and-drain semantics mean cheques arrive in batches
     /// matching validator witness rounds; 3-5 seconds keeps the
     /// wallet's inbox warm without thrashing.
     var pop3PollSecs: Int = 3
+
+    /// What Kiddo may delete from this mailbox once it has collected mail
+    /// (docs/AXIOM_DESIGN_CarrierHandoff.md §5). Set from
+    /// `RetentionMode.defaultFor(kind:)` for a NEW account; an account that
+    /// predates this field decodes to `.deleteAll` below, which is what it
+    /// has been doing all along.
+    var retention: RetentionMode = .deleteAll
 }
 
 extension KiddoAccount {
@@ -96,6 +147,14 @@ extension KiddoAccount {
         case password
         case hasKeychainPassword
         case pop3PollSecs
+        case retention
+        case pop3Username
+        case hasPop3KeychainPassword
+        // `pop3Password`, like `password`, is decoded for migration only and
+        // never encoded — the keychain owns it.
+        case pop3Password
+        case inboundProtocol
+        case imapFolder
     }
 
     /// Custom decoder so existing `accounts.json` files — written
@@ -107,6 +166,19 @@ extension KiddoAccount {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id          = try c.decodeIfPresent(UUID.self,        forKey: .id)          ?? UUID()
         self.kind        = try c.decodeIfPresent(AccountKind.self, forKey: .kind)        ?? .axiomDev
+        // ⚠ MIGRATION, not a default: every account written before this
+        // field was draining its mailbox, so that is what it keeps doing
+        // until the user chooses otherwise. Substituting
+        // `RetentionMode.defaultFor(kind:)` here would silently stop
+        // deleting for mailboxes that have been drained for months, and
+        // they would start re-delivering.
+        self.retention   = try c.decodeIfPresent(RetentionMode.self, forKey: .retention) ?? .deleteAll
+        // Absent = "same as sending", which is what every pre-field account
+        // was doing, so nothing changes behaviour on upgrade.
+        self.pop3Username = try c.decodeIfPresent(String.self, forKey: .pop3Username) ?? ""
+        self.pop3Password = try c.decodeIfPresent(String.self, forKey: .pop3Password) ?? ""
+        self.hasPop3KeychainPassword =
+            try c.decodeIfPresent(Bool.self, forKey: .hasPop3KeychainPassword) ?? false
         self.label       = try c.decode(String.self, forKey: .label)
         self.walletDir   = try c.decode(String.self, forKey: .walletDir)
         self.walletEmail = try c.decode(String.self, forKey: .walletEmail)
@@ -120,6 +192,8 @@ extension KiddoAccount {
         self.password    = try c.decodeIfPresent(String.self, forKey: .password)    ?? ""
         self.hasKeychainPassword = try c.decodeIfPresent(Bool.self, forKey: .hasKeychainPassword) ?? false
         self.pop3PollSecs = try c.decodeIfPresent(Int.self,   forKey: .pop3PollSecs) ?? 3
+        self.inboundProtocol = try c.decodeIfPresent(InboundProtocol.self, forKey: .inboundProtocol) ?? .pop3
+        self.imapFolder = try c.decodeIfPresent(String.self, forKey: .imapFolder) ?? "INBOX"
     }
 
     /// Custom encoder. Synthesised `encode(to:)` would have written
@@ -143,7 +217,23 @@ extension KiddoAccount {
         // persistent store for it.
         try c.encode(hasKeychainPassword, forKey: .hasKeychainPassword)
         try c.encode(pop3PollSecs, forKey: .pop3PollSecs)
+        try c.encode(retention, forKey: .retention)
+        try c.encode(pop3Username, forKey: .pop3Username)
+        try c.encode(hasPop3KeychainPassword, forKey: .hasPop3KeychainPassword)
+        try c.encode(inboundProtocol, forKey: .inboundProtocol)
+        try c.encode(imapFolder, forKey: .imapFolder)
     }
+}
+
+/// How an account collects inbound mail. The host/port/TLS/login fields keep
+/// their `pop3*` names for on-disk compatibility; the UI labels them
+/// "receiving" and this enum says which client reads them.
+enum InboundProtocol: String, Codable, CaseIterable, Identifiable {
+    case pop3, imap
+    var id: String { rawValue }
+    var displayName: String { self == .pop3 ? "POP3" : "IMAP" }
+    /// Provider-standard implicit-TLS port.
+    var defaultTLSPort: Int { self == .pop3 ? 995 : 993 }
 }
 
 /// Minimal `validators.list` parser. Kiddo derives the FATMAMA host
@@ -260,6 +350,7 @@ extension KiddoAccount {
             walletEmail: ""
         )
         acct.kind = .axiomDev
+        acct.retention = RetentionMode.defaultFor(kind: .axiomDev)
         if let h = conf.smtpHost {
             acct.smtpHost = h
         } else if let h = seed.fatmamaHost {
@@ -293,6 +384,15 @@ extension KiddoAccount {
             walletEmail: ""
         )
         acct.kind        = .email
+        acct.retention   = RetentionMode.defaultFor(kind: .email)
+        // ⚠ NOT the dev cadence. FATMAMA is on the LAN and does not care, so
+        // `.axiomDev` polls every 3 s; a real provider sees that as 1200
+        // sign-ins an hour and throttles, then blocks — which arrives as a
+        // connection timeout, indistinguishable from a network fault
+        // (the owner, 2026-09-12: "a ban can be a network timeout.. it was banned
+        // from firewall"). One minute is unremarkable to a provider and still
+        // well inside the SDK's own 60 s witness-round budget.
+        acct.pop3PollSecs = 60
         acct.smtpHost    = ""
         acct.smtpPort    = 465
         acct.smtpUseTLS  = true

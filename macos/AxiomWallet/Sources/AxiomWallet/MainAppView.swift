@@ -127,21 +127,18 @@ struct MainAppView: View {
         .sheet(isPresented: $digitVersion.showLaunchWarning) {
             dvLaunchNoticeSheet()
         }
-        // Push the active wallet's carrier preferences into the SDK
-        // runtime on first appear (post-login) and on every pair / mode
-        // switch. Without this, sets configured in a previous session
-        // would sit in UserDefaults but the SDK would run on its
-        // email-only default until the user happened to open Settings.
+        // Push the active wallet's incoming-check mode into the SDK runtime
+        // on first appear (post-login) and on every pair / mode switch.
+        // (Carrier preferences used to be pushed here too — removed 2026-09-13:
+        // a carrier is a property of this install, not of a wallet, and is
+        // declared once at launch by CarrierChoice. KI#154.)
         .task {
-            CarrierPreferences.pushActiveToSdk(session)
             IncomingCheckPreference.pushActiveToSdk(session)   // KI#34 WI2/WI5 baseline
         }
         .onChange(of: session.activePairIndex) { _ in
-            CarrierPreferences.pushActiveToSdk(session)
             IncomingCheckPreference.pushActiveToSdk(session)
         }
         .onChange(of: session.activeMode) { _ in
-            CarrierPreferences.pushActiveToSdk(session)
             IncomingCheckPreference.pushActiveToSdk(session)
         }
         // Refresh `versionSkew` whenever a background send resolves

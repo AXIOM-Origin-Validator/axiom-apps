@@ -305,7 +305,21 @@ struct GenesisClaimSheet: View {
         case .ready:                   return nil  // unreachable
         case .notInstalled:            return nil  // user has to install
         case .notRunning:              return ("Launch Kiddo", { KiddoPreflight.launchKiddo() })
-        case .noAccountForEmail:       return ("Open Kiddo Settings", { KiddoPreflight.openKiddoForSettings() })
+        case .noAccountForEmail:
+            // Hand the address over rather than making the user retype it in
+            // another app (same fix as onboarding's mail step).
+            return ("Set up in AxiomKiddo", {
+                guard let pair = session.activePair,
+                      let w = session.activeWallet else {
+                    KiddoPreflight.openKiddoForSettings()
+                    return
+                }
+                KiddoPreflight.openKiddoForSetup(
+                    walletEmail: w.email(),
+                    walletDir: "\(defaultWalletDir())/\(pair.name)-normal",
+                    label: pair.name
+                )
+            })
         }
     }
 

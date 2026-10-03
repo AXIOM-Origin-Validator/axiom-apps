@@ -705,7 +705,7 @@ struct BundleDetailView: View {
             && !redeemCoordinator.isRedeeming
             && !claimCoordinator.isClaiming else { return }
         let email = session.activeWallet?.email() ?? ""
-        kiddoGate.check(email: email) {
+        kiddoGate.check(email: email, walletDir: session.activePair.map { "\(defaultWalletDir())/\($0.name)-normal" }) {
             showSignSheet = true
         }
     }

@@ -21,6 +21,15 @@
 # No identity, no Apple Developer Program involvement, no notarization.
 #
 # Run from repo root or anywhere — paths resolve via SCRIPT_DIR.
+#
+# ⚠ INSTALLING WHAT THIS BUILDS. Copy the .app over the installed one with
+# `ditto` (or drag it in Finder). Do NOT `rm -rf` or `rsync --delete` the
+# bundle in /Applications first: an app-uninstaller watcher (Remove-It's
+# "Ghost", a login item on the build Mac) reads a bundle disappearing as an
+# uninstall and purges ~/Library/Application Support/Axiom. That happened on
+# 2026-09-11 — seven wallet directories and contacts.json, gone, while the
+# apps were running. build-dev-app.sh carries the same warning at its install
+# step.
 
 set -euo pipefail
 
@@ -156,7 +165,10 @@ green "    artifact: ${DMG_NAME%.dmg}"
 # UI is absent too. Dev builds (build.sh / build-dev-app.sh) enable both.
 bold "==> cargo build -p axiom-sdk-ffi --release  (CARGO_TARGET_DIR=$CARGO_TARGET_DIR)"
 cd "$WORKSPACE"
-cargo build -p axiom-sdk-ffi --release
+# KI#240: core/logic register twins are the ONE rule's (dev-keyed tree -> core dev-mode,
+# ceremony-keyed -> none). The SDK no longer forces dev-mode through the AVM's features.
+FFI_FEAT="$(python3 "$WORKSPACE/scripts/build_profile.py" --features axiom-sdk-ffi)"
+cargo build -p axiom-sdk-ffi --release $FFI_FEAT
 # Copy the username-free lib into the workspace target/ that Package.swift + uniffi link from.
 # (All cargo output went to CARGO_TARGET_DIR, so nothing else writes target/release — the copy
 # is authoritative.)
@@ -190,7 +202,7 @@ build_app() {
         local ffi="$app_dir/Generated/AxiomSdkFFI"
         mkdir -p "$raw" "$sdk" "$ffi"
         cd "$WORKSPACE"
-        cargo run -p axiom-sdk-ffi --release --bin uniffi-bindgen -- \
+        cargo run -p axiom-sdk-ffi --release --bin uniffi-bindgen $FFI_FEAT -- \
             generate --library "$RUST_LIB" \
             --language swift --out-dir "$raw"
         cp "$raw/axiom_sdk_ffi.swift" "$sdk/"
